@@ -108,12 +108,12 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `core::http` builds one `reqwest` client (rustls, gzip, brotli, `timeout = ingest.request_timeout_ms`, `redirect::Policy::limited(max_redirects)`, a `dailybrief/0.1` user agent) and a `read_capped` helper that streams a body up to `body_max_bytes` and errors past it. `core::fetch` fetches one feed with `If-None-Match` / `If-Modified-Since` from the `sources` row, parses it with `feed-rs`, and returns `FeedFetch::{NotModified, Entries(Vec<Entry>, etag, last_modified), Failed(String)}`; entries carry link, title, author, published, summary.
 
 **Acceptance criteria:**
-- [ ] test (wiremock): `fetch_feed_parses_rss2_fixture`, `_parses_atom_fixture`, `_sends_conditional_headers`, `_returns_not_modified_on_304`, `_errors_past_body_cap` (a 3 MiB body), `_stops_after_max_redirects`, `_rejects_non_http_scheme`, `_times_out` (delayed response).
-- [ ] Fixtures `tests/fixtures/feeds/rss2.xml` and `atom.xml` are hand-written, ≤ 5 entries each, with one entry lacking `published`.
+- [x] test (wiremock): `fetch_feed_parses_rss2_fixture`, `_parses_atom_fixture`, `_sends_conditional_headers`, `_returns_not_modified_on_304`, `_errors_past_body_cap` (a 3 MiB body), `_stops_after_max_redirects`, `_rejects_non_http_scheme`, `_times_out` (delayed response).
+- [x] Fixtures `tests/fixtures/feeds/rss2.xml` and `atom.xml` are hand-written, ≤ 5 entries each, with one entry lacking `published`.
 
 **Verification:**
-- [ ] `cargo test core::fetch core::http`
-- [ ] fast checks clean
+- [x] `cargo test core::fetch core::http`
+- [x] fast checks clean
 
 **Dependencies:** Task 1
 **Files likely touched:** `Cargo.toml` (`reqwest`, `feed-rs`, `wiremock`), `src/core/http.rs`, `src/core/fetch.rs`, `tests/fixtures/feeds/rss2.xml`, `tests/fixtures/feeds/atom.xml`
@@ -124,12 +124,12 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `core::extract`: HTML → `Extracted { title, byline, text, word_count }` with `dom_smoothie`, falling back to `readability` when the first yields no body; `word_count` = `split_whitespace().count()`; a page with no extractable body returns `None` so ingest skips it. Three hand-written fixture pages.
 
 **Acceptance criteria:**
-- [ ] test: `extracts_long_article_title_and_body` (fixture `long.html`, ≥ 800 words, nav/footer text absent from `text`); `extracts_short_article` (`short.html`); `returns_none_for_no_body` (`nobody.html`: a page of links only); `word_count_counts_unicode_words` (a Vietnamese paragraph).
-- [ ] test: `text_is_whitespace_normalised` (no runs of blank lines, no trailing spaces).
+- [x] test: `extracts_long_article_title_and_body` (fixture `long.html`, ≥ 800 words, nav/footer text absent from `text`); `extracts_short_article` (`short.html`); `returns_none_for_no_body` (`nobody.html`: a page of links only); `word_count_counts_unicode_words` (a Vietnamese paragraph).
+- [x] test: `text_is_whitespace_normalised` (no runs of blank lines, no trailing spaces).
 
 **Verification:**
-- [ ] `cargo test core::extract`
-- [ ] fast checks clean
+- [x] `cargo test core::extract`
+- [x] fast checks clean
 
 **Dependencies:** Task 1
 **Files likely touched:** `Cargo.toml` (`dom_smoothie`, `readability`), `src/core/extract.rs`, `tests/fixtures/html/long.html`, `tests/fixtures/html/short.html`, `tests/fixtures/html/nobody.html`
