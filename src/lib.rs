@@ -10,3 +10,4 @@ pub mod db;
 pub mod editor;
 pub mod harness;
 pub mod mcp;
+pub mod web;

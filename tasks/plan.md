@@ -128,7 +128,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Review with human (autonomous run)
 
 ### Phase 6: Web (`web-read`)
-- [ ] Task 22: App shell, bind guard, security headers, digest pages and states; `serve` verb
+- [x] Task 22: App shell, bind guard, security headers, digest pages and states; `serve` verb
 - [ ] Task 23: Click redirect, transcript download, `POST /run`, `/run/status`; scheduler wired into `serve`
 - [ ] Task 24: Cloudflare Access JWT middleware
 

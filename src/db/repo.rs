@@ -1018,6 +1018,77 @@ pub fn release_lock(conn: &Connection) -> Result<(), DbError> {
     Ok(())
 }
 
+// ---------- reading surface: digest cards and runs of a day ----------
+
+/// One digest item joined with the article and its source, as the page renders it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestCard {
+    pub item_id: String,
+    pub section: Section,
+    pub position: i64,
+    pub summary: String,
+    pub why_it_matters: String,
+    pub reason: Option<String>,
+    pub topic: String,
+    pub title: String,
+    pub source: String,
+    pub published_at: Option<String>,
+}
+
+pub fn list_digest_cards(conn: &Connection, digest_id: &str) -> Result<Vec<DigestCard>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT di.item_id, di.section, di.position, di.summary, di.why_it_matters, di.reason, di.topic,
+                i.title, COALESCE(s.title, i.source_id) AS source, i.published_at
+         FROM digest_items di
+         JOIN items i ON i.id = di.item_id
+         LEFT JOIN sources s ON s.id = i.source_id
+         WHERE di.digest_id = ?1 ORDER BY di.section, di.position",
+    )?;
+    let rows = stmt
+        .query_map([digest_id], |row| {
+            let section: String = row.get("section")?;
+            let section = Section::parse(&section).ok_or_else(|| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    format!("unknown section '{section}'").into(),
+                )
+            })?;
+            Ok(DigestCard {
+                item_id: row.get("item_id")?,
+                section,
+                position: row.get("position")?,
+                summary: row.get("summary")?,
+                why_it_matters: row.get("why_it_matters")?,
+                reason: row.get("reason")?,
+                topic: row.get("topic")?,
+                title: row.get("title")?,
+                source: row.get("source")?,
+                published_at: row.get("published_at")?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// The most recently started run with `started_at` in `[from, to)`.
+pub fn latest_run_between(
+    conn: &Connection,
+    from: &str,
+    to: &str,
+) -> Result<Option<RunRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "SELECT {RUN_COLS} FROM runs WHERE started_at >= ?1 AND started_at < ?2
+                 ORDER BY started_at DESC, id DESC LIMIT 1"
+            ),
+            params![from, to],
+            map_run,
+        )
+        .optional()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

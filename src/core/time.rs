@@ -39,6 +39,31 @@ pub fn date_in_zone(t: DateTime<Utc>, tz: Tz) -> String {
     t.with_timezone(&tz).format("%Y-%m-%d").to_string()
 }
 
+/// `true` for a well-formed `YYYY-MM-DD` that names a real calendar day.
+pub fn parse_date(s: &str) -> Option<chrono::NaiveDate> {
+    if s.len() != 10 {
+        return None;
+    }
+    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
+}
+
+/// The stored-form UTC bounds `[start, end)` of a local calendar day in `tz`.
+pub fn day_bounds_utc(date: &str, tz: Tz) -> Option<(String, String)> {
+    use chrono::TimeZone;
+    let day = parse_date(date)?;
+    let next = day.succ_opt()?;
+    let start = tz
+        .from_local_datetime(&day.and_hms_opt(0, 0, 0)?)
+        .single()?;
+    let end = tz
+        .from_local_datetime(&next.and_hms_opt(0, 0, 0)?)
+        .single()?;
+    Some((
+        to_iso(start.with_timezone(&Utc)),
+        to_iso(end.with_timezone(&Utc)),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,6 +90,17 @@ mod tests {
         let ago = days_ago_iso(now, 7);
         assert_eq!(ago, "2026-09-10T06:30:00.000Z");
         assert!(ago < to_iso(now));
+    }
+
+    #[test]
+    fn day_bounds_in_ho_chi_minh_are_utc_shifted() {
+        let tz = parse_tz("Asia/Ho_Chi_Minh").unwrap();
+        let (start, end) = day_bounds_utc("2026-09-17", tz).unwrap();
+        assert_eq!(start, "2026-09-16T17:00:00.000Z");
+        assert_eq!(end, "2026-09-17T17:00:00.000Z");
+        assert!(day_bounds_utc("2026-13-01", tz).is_none());
+        assert!(parse_date("2026-9-7").is_none());
+        assert!(parse_date("2026-02-30").is_none());
     }
 
     #[test]

@@ -414,13 +414,13 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `web::app` (`axum` router with `AppState { db, config, runner: Option<…> }`, a layer adding `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, 404 fallback), `assert_bind_allowed`, `web::views::{layout, digest, state}` in `maud` (mobile-first, system fonts, htmx script tag), `routes::digest` for `/` and `/d/{date}` with the four states (published / failed with error + transcript link + Refresh / running / none). `commands::serve` serving on `bind:port` with graceful shutdown on SIGTERM.
 
 **Acceptance criteria:**
-- [ ] test (`oneshot`): `root_redirects_or_renders_today`; `day_renders_published_digest_with_24_then_6`; `beyond_radar_cards_show_reason_badge`; `day_renders_failed_state_with_transcript_link`; `day_renders_running_state`; `day_renders_no_run_state`; `unknown_route_is_404`; `security_headers_on_every_response`; `html_under_15_kb_for_30_items`.
-- [ ] test: `bind_guard_allows_loopback`, `_allows_any_in_container`, `_refuses_otherwise`.
+- [x] test (`oneshot`): `root_redirects_or_renders_today`; `day_renders_published_digest_with_24_then_6`; `beyond_radar_cards_show_reason_badge`; `day_renders_failed_state_with_transcript_link`; `day_renders_running_state`; `day_renders_no_run_state`; `unknown_route_is_404`; `security_headers_on_every_response`; `html_under_15_kb_for_30_items`.
+- [x] test: `bind_guard_allows_loopback`, `_allows_any_in_container`, `_refuses_otherwise`.
 
 **Verification:**
-- [ ] `cargo test web::`
-- [ ] `cargo run -- serve` on a temp data dir; `curl -s localhost:8788/ | head`
-- [ ] fast checks clean
+- [x] `cargo test web::`
+- [x] `cargo run -- serve` on a temp data dir; `curl -s localhost:8788/ | head`
+- [x] fast checks clean
 
 **Dependencies:** Task 21
 **Files likely touched:** `Cargo.toml` (`axum`, `tower-http`, `maud`), `src/web/mod.rs`, `src/web/app.rs`, `src/web/views/*.rs`, `src/web/routes/digest.rs`, `src/commands/serve.rs`

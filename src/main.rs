@@ -43,6 +43,8 @@ enum Command {
         #[arg(long)]
         message: Option<String>,
     },
+    /// Serve the reading pages (and the scheduler) on service.bind:service.port.
+    Serve,
     /// Egress scan of a run transcript; exit 1 on any finding.
     ScanTranscript {
         /// Path to transcript.jsonl
@@ -105,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
             .await?;
             std::process::exit(code);
         }
+        Command::Serve => commands::serve::run(&env).await?,
         Command::ScanTranscript { path } => {
             let code = commands::scan_transcript::run(&env, &path, &mut std::io::stdout()).await?;
             std::process::exit(code);

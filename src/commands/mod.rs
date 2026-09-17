@@ -6,6 +6,7 @@ pub mod mcp;
 pub mod migrate;
 pub mod run;
 pub mod scan_transcript;
+pub mod serve;
 
 use std::path::PathBuf;
 
@@ -34,6 +35,14 @@ pub enum CommandError {
     Runner(#[from] crate::harness::runner::RunnerError),
     #[error(transparent)]
     Env(#[from] crate::harness::claude_code::EnvError),
+    #[error(transparent)]
+    Bind(#[from] crate::web::app::BindError),
+    #[error("cannot bind {addr}: {source}")]
+    Listen {
+        addr: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// The SQLite file inside the data directory.
