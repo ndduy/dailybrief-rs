@@ -1,0 +1,44 @@
+# dailybrief service configuration (spec/m1.md). Defaults for omitted keys are in src/config/schema.ts.
+# Environment overrides: DAILYBRIEF_CONFIG, DAILYBRIEF_DATA_DIR, DAILYBRIEF_BIND, DAILYBRIEF_IN_CONTAINER.
+
+[service]
+bind = "127.0.0.1"          # "0.0.0.0" is accepted only inside the container (DAILYBRIEF_IN_CONTAINER=1)
+port = 8788
+timezone = "Asia/Ho_Chi_Minh"
+data_dir = "data"           # relative to this file; the container sets DAILYBRIEF_DATA_DIR=/data
+
+[schedule]
+cron = "30 6 * * *"         # morning run, in service.timezone
+
+[caps]                      # digest contract, spec/m1.md §8.2
+reads = 45
+for_you = 24
+beyond_radar = 6
+per_source = 4
+per_topic = 8
+web_search = 5
+read_text_chars = 5000
+shown_days = 14
+candidate_days = 7
+
+[ingest]
+concurrency = 6
+request_timeout_ms = 15000
+total_budget_ms = 120000
+body_max_bytes = 2097152
+max_redirects = 3
+dedupe_cosine = 0.92
+
+[embeddings]
+model = "Xenova/bge-small-en-v1.5"
+dimensions = 384
+
+[harness]
+default = "claude-code"
+mcp_command = "dailybrief"   # written into each run's mcp.json; the harness spawns it with mcp_args
+mcp_args = ["mcp"]
+
+[harness.claude-code]
+model = "opus"
+max_turns = 120
+wall_clock_minutes = 15

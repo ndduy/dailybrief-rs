@@ -1,0 +1,20 @@
+# Example feeds.toml. Copy entries into feeds.toml. Fields: id (required, [a-z0-9_-]),
+# url (required, http/https RSS or Atom), title (default: id), weight (default 1.0), enabled (default true).
+
+[[feeds]]
+id = "simon-willison"
+url = "https://simonwillison.net/atom/everything/"
+title = "Simon Willison"
+weight = 1.0
+
+[[feeds]]
+id = "anthropic-engineering"
+url = "https://www.anthropic.com/engineering/rss.xml"
+title = "Anthropic Engineering"
+
+[[feeds]]
+id = "lobsters"
+url = "https://lobste.rs/rss"
+title = "Lobsters"
+weight = 0.8
+enabled = false

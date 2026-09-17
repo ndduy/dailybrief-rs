@@ -1,0 +1,14 @@
+{
+  "_comment": "Template. The runner substitutes ${...} and writes a copy to <data>/runs/<id>/mcp.json, which is the only MCP config the harness sees (--strict-mcp-config).",
+  "mcpServers": {
+    "dailybrief": {
+      "command": "${MCP_COMMAND}",
+      "args": "${MCP_ARGS}",
+      "env": {
+        "DAILYBRIEF_RUN_ID": "${RUN_ID}",
+        "DAILYBRIEF_CONFIG": "${CONFIG_PATH}",
+        "DAILYBRIEF_DATA_DIR": "${DATA_DIR}"
+      }
+    }
+  }
+}

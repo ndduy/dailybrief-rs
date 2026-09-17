@@ -1,0 +1,223 @@
+# Sources for the Editor. Drafted 2026-09-11 from topics.toml; every entry was validated with
+# `dailybrief fetch`. Fields: id, url, title (default: id), weight (default 1.0), enabled (default true).
+# Weight only orders the popular_unmatched strategy in M1; ratings adjust it from M3.
+
+# --- Engineering management, leadership, career (weights 66 / 17 / 14) ---
+[[feeds]]
+id = "pragmatic-engineer"
+url = "https://newsletter.pragmaticengineer.com/feed"
+title = "The Pragmatic Engineer"
+weight = 1.2
+
+[[feeds]]
+id = "lethain"
+url = "https://lethain.com/feeds.xml"
+title = "Irrational Exuberance (Will Larson)"
+weight = 1.2
+
+[[feeds]]
+id = "charity-wtf"
+url = "https://charity.wtf/feed/"
+title = "charity.wtf"
+
+[[feeds]]
+id = "rands"
+url = "https://randsinrepose.com/feed/"
+title = "Rands in Repose"
+
+[[feeds]]
+id = "elided-branches"
+url = "https://www.elidedbranches.com/feeds/posts/default"
+title = "Elided Branches (Camille Fournier)"
+
+[[feeds]]
+id = "leaddev"
+url = "https://leaddev.com/rss.xml"
+title = "LeadDev"
+weight = 0.9
+
+[[feeds]]
+id = "tidy-first"
+url = "https://tidyfirst.substack.com/feed"
+title = "Tidy First? (Kent Beck)"
+
+[[feeds]]
+id = "jvns"
+url = "https://jvns.ca/atom.xml"
+title = "Julia Evans"
+
+# --- GenAI, agents (weight 64) ---
+[[feeds]]
+id = "simon-willison"
+url = "https://simonwillison.net/atom/everything/"
+title = "Simon Willison"
+weight = 1.2
+
+[[feeds]]
+id = "latent-space"
+url = "https://www.latent.space/feed"
+title = "Latent Space"
+weight = 1.1
+
+[[feeds]]
+id = "interconnects"
+url = "https://www.interconnects.ai/feed"
+title = "Interconnects (Nathan Lambert)"
+
+[[feeds]]
+id = "hamel"
+url = "https://hamel.dev/index.xml"
+title = "Hamel Husain"
+
+[[feeds]]
+id = "eugene-yan"
+url = "https://eugeneyan.com/rss/"
+title = "Eugene Yan"
+
+[[feeds]]
+id = "import-ai"
+url = "https://importai.substack.com/feed"
+title = "Import AI (Jack Clark)"
+
+# --- System design, platform engineering (weights 24 / 26) ---
+[[feeds]]
+id = "martin-fowler"
+url = "https://martinfowler.com/feed.atom"
+title = "martinfowler.com"
+weight = 1.2
+
+[[feeds]]
+id = "bytebytego"
+url = "https://blog.bytebytego.com/feed"
+title = "ByteByteGo"
+weight = 0.9
+
+[[feeds]]
+id = "infoq-architecture"
+url = "https://feed.infoq.com/architecture-design/"
+title = "InfoQ Architecture & Design"
+weight = 0.7
+# www.infoq.com serves an AWS WAF CAPTCHA (405, x-amzn-waf-action: captcha) to every article fetch, from any
+# IP and any client we tried, so items carry the 34-62 word feed summary only. Kept as a pointer source:
+# the most-clipped site in the vault (7 clips, counted 2026-09-17).
+
+[[feeds]]
+id = "netflix-tech"
+url = "https://netflixtechblog.com/feed"
+title = "Netflix TechBlog"
+
+[[feeds]]
+id = "cloudflare-blog"
+url = "https://blog.cloudflare.com/rss/"
+title = "Cloudflare Blog"
+weight = 0.9
+
+[[feeds]]
+id = "kubernetes-blog"
+url = "https://kubernetes.io/feed.xml"
+title = "Kubernetes Blog"
+weight = 0.9
+
+[[feeds]]
+id = "cncf"
+url = "https://www.cncf.io/feed/"
+title = "CNCF"
+weight = 0.8
+
+# --- Go, Rust (weight 4 each) ---
+[[feeds]]
+id = "go-blog"
+url = "https://go.dev/blog/feed.atom"
+title = "The Go Blog"
+
+[[feeds]]
+id = "rust-blog"
+url = "https://blog.rust-lang.org/feed.xml"
+title = "Rust Blog"
+
+[[feeds]]
+id = "this-week-in-rust"
+url = "https://this-week-in-rust.org/rss.xml"
+title = "This Week in Rust"
+weight = 0.8
+
+# --- QA & testing (weight 6) ---
+[[feeds]]
+id = "google-testing"
+url = "https://testing.googleblog.com/feeds/posts/default"
+title = "Google Testing Blog"
+
+# --- Strategy, business, product, project management (weights 9 / 7) ---
+[[feeds]]
+id = "stratechery"
+url = "https://stratechery.com/feed/"
+title = "Stratechery"
+weight = 0.9
+
+[[feeds]]
+id = "lenny"
+url = "https://www.lennysnewsletter.com/feed"
+title = "Lenny's Newsletter"
+weight = 0.9
+
+# --- Knowledge management, PKM (weight 4) ---
+# --- Aggregators: breadth for beyond_radar; low weight so they never dominate ---
+[[feeds]]
+id = "hn-frontpage"
+url = "https://hnrss.org/frontpage?points=150"
+title = "Hacker News (150+ points)"
+weight = 0.6
+
+[[feeds]]
+id = "lobsters"
+url = "https://lobste.rs/rss"
+title = "Lobsters"
+weight = 0.6
+
+# --- Sources clipped most often into the vault (Clippings folder, counted 2026-09-17); validated by a real ingest ---
+# infoq.com led with 7 clips and is enabled above as a summary-only pointer source. uber.com (2)
+# publishes no feed. youtube.com, x.com and linkedin.com are not feed sources.
+[[feeds]]
+id = "levelup-gitconnected"
+url = "https://levelup.gitconnected.com/feed"
+title = "Level Up Coding"
+weight = 0.8
+# 4 clips, all Go concurrency deep dives. medium.com answers 403 to article fetches, so items keep the
+# feed body: full text for free posts, a one-line stub for member-only ones.
+
+[[feeds]]
+id = "addyosmani"
+url = "https://addyosmani.com/rss.xml"
+title = "Addy Osmani"
+weight = 1.1
+# 2 clips plus one shared post; agent harness engineering
+
+[[feeds]]
+id = "zerodha-tech"
+url = "https://zerodha.tech/index.xml"
+title = "Zerodha Tech Blog"
+weight = 0.9
+
+[[feeds]]
+id = "techworld-with-milan"
+url = "https://newsletter.techworld-with-milan.com/feed"
+title = "Tech World With Milan"
+weight = 0.9
+
+[[feeds]]
+id = "giansegato"
+url = "https://giansegato.com/rss"
+title = "Gian Segato"
+weight = 0.9
+
+[[feeds]]
+id = "langchain-blog"
+url = "https://www.langchain.com/blog/rss.xml"
+title = "LangChain Blog"
+weight = 0.8
+
+[[feeds]]
+id = "interviewnoodle"
+url = "https://interviewnoodle.com/feed"
+title = "Interview Noodle"
+weight = 0.8
