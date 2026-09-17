@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# A stand-in for `claude -p` in adapter tests. It ignores its arguments and is driven by
+# DAILYBRIEF_FAKE_* variables (the prefix passes the adapter's env allowlist):
+#   DAILYBRIEF_FAKE_TRANSCRIPT    stream-json file to replay on stdout, line by line
+#   DAILYBRIEF_FAKE_STDERR_BYTES  bytes of noise to write on stderr before anything else
+#   DAILYBRIEF_FAKE_HANG=1        after replaying, sleep until SIGTERM (exit 143) or SIGKILL
+#   DAILYBRIEF_FAKE_TERM_MARKER   file to create when SIGTERM is received (proves TERM before KILL)
+#   DAILYBRIEF_FAKE_EXIT          exit code when not hanging (default 0)
+set -u
+if [ -n "${DAILYBRIEF_FAKE_STDERR_BYTES:-}" ]; then
+  head -c "$DAILYBRIEF_FAKE_STDERR_BYTES" /dev/zero | tr '\0' 'e' >&2
+fi
+if [ -n "${DAILYBRIEF_FAKE_TRANSCRIPT:-}" ]; then
+  cat "$DAILYBRIEF_FAKE_TRANSCRIPT"
+fi
+if [ "${DAILYBRIEF_FAKE_HANG:-}" = "1" ]; then
+  trap 'echo term > "${DAILYBRIEF_FAKE_TERM_MARKER:-/dev/null}"; exit 143' TERM
+  while :; do sleep 0.05; done
+fi
+exit "${DAILYBRIEF_FAKE_EXIT:-0}"

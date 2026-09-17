@@ -3,13 +3,19 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::process::Command;
 
-use super::types::HarnessRequest;
+use super::types::{FailReason, HarnessRequest, RunOutcome};
 use crate::config::ClaudeCodeSettings;
+
+/// How much of stderr is kept for the failure message.
+const STDERR_TAIL: usize = 4096;
 
 pub const MCP_SERVER_TOOL_PATTERN: &str = "mcp__dailybrief__*";
 pub const USER_MESSAGE: &str = "Build today's digest. Start with get_briefing.";
@@ -228,6 +234,154 @@ impl ClaudeCodeAdapter {
             kill_grace: Duration::from_secs(10),
         })
     }
+
+    /// Spawns `claude -p`, streams stdout to `on_line` while draining stderr, enforces the wall
+    /// clock (SIGTERM, then SIGKILL after `kill_grace`), and classifies the end of the process.
+    pub async fn run(
+        &self,
+        req: &HarnessRequest,
+        mut on_line: impl FnMut(&str, u64),
+    ) -> RunOutcome {
+        let failed = |reason, message: String, exit_code| RunOutcome::Failed {
+            reason,
+            message,
+            exit_code,
+            result: None,
+            init: None,
+        };
+        let mut child = match Command::new(&self.binary)
+            .args(build_argv(&self.settings, req))
+            .current_dir(&req.cwd)
+            .env_clear()
+            .envs(&self.env)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                return failed(
+                    FailReason::Exit,
+                    format!("could not start {}: {e}", self.binary.display()),
+                    None,
+                );
+            }
+        };
+        let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
+            return failed(
+                FailReason::Exit,
+                "child has no stdout/stderr pipes".into(),
+                None,
+            );
+        };
+        // stderr is drained concurrently so a chatty child can never block on a full pipe.
+        let stderr_task = tokio::spawn(async move {
+            let mut tail: Vec<u8> = Vec::new();
+            let mut reader = BufReader::new(stderr);
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        tail.extend_from_slice(&buf[..n]);
+                        if tail.len() > STDERR_TAIL {
+                            let cut = tail.len() - STDERR_TAIL;
+                            tail.drain(..cut);
+                        }
+                    }
+                }
+            }
+            String::from_utf8_lossy(&tail).trim().to_string()
+        });
+
+        let mut init: Option<InitEvent> = None;
+        let mut result: Option<ResultEvent> = None;
+        let mut seq: u64 = 0;
+        let read_stdout = async {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(raw)) = lines.next_line().await {
+                if raw.trim().is_empty() {
+                    continue;
+                }
+                seq += 1;
+                on_line(&raw, seq);
+                match parse_stream_line(&raw) {
+                    StreamEvent::Init(i) => init = Some(i),
+                    StreamEvent::Result(r) => result = Some(r),
+                    _ => {}
+                }
+            }
+        };
+        let timed_out = tokio::time::timeout(self.wall_clock, read_stdout)
+            .await
+            .is_err();
+        if timed_out {
+            terminate(&mut child, self.kill_grace).await;
+            let _ = stderr_task.await;
+            return RunOutcome::Killed {
+                message: format!("wall clock of {} s exceeded", self.wall_clock.as_secs()),
+                init,
+            };
+        }
+        let status = child.wait().await.ok();
+        let exit_code = status.and_then(|s| s.code());
+        let stderr_tail = stderr_task.await.unwrap_or_default();
+        match result {
+            Some(r) if r.subtype == "success" && !r.is_error => {
+                RunOutcome::Success { result: r, init }
+            }
+            Some(r) => {
+                let reason = if r.subtype == "error_max_turns" {
+                    FailReason::MaxTurns
+                } else {
+                    FailReason::Error
+                };
+                RunOutcome::Failed {
+                    reason,
+                    message: r.message(),
+                    exit_code,
+                    result: Some(r),
+                    init,
+                }
+            }
+            None => match exit_code {
+                Some(0) => RunOutcome::Failed {
+                    reason: FailReason::NoResult,
+                    message: "process ended without a result message".into(),
+                    exit_code,
+                    result: None,
+                    init,
+                },
+                code => RunOutcome::Failed {
+                    reason: FailReason::Exit,
+                    message: match code {
+                        Some(c) => format!("exit code {c}: {stderr_tail}"),
+                        None => format!("killed by signal: {stderr_tail}"),
+                    },
+                    exit_code: code,
+                    result: None,
+                    init,
+                },
+            },
+        }
+    }
+}
+
+/// SIGTERM first (the child can flush), SIGKILL after `grace` (`SPEC.md` §3); `nix` keeps this
+/// free of `unsafe`.
+async fn terminate(child: &mut tokio::process::Child, grace: Duration) {
+    if let Some(pid) = child.id() {
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(pid as i32),
+            nix::sys::signal::Signal::SIGTERM,
+        );
+    }
+    if tokio::time::timeout(grace, child.wait()).await.is_err() {
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+    }
 }
 
 #[cfg(test)]
@@ -437,6 +591,18 @@ mod tests {
         assert_eq!(
             event_type(r#"{"type":"system","subtype":"hook"}"#),
             "system"
+        );
+    }
+
+    #[test]
+    fn no_libc_signal_path() {
+        // Only the production half of this file: the test module names the forbidden crate.
+        let src = include_str!("claude_code.rs");
+        let production = src.split("#[cfg(test)]").next().unwrap_or_default();
+        let forbidden = ["libc", "::"].concat();
+        assert!(
+            !production.contains(&forbidden),
+            "signals go through nix, never {forbidden}"
         );
     }
 

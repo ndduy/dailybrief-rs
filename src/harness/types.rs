@@ -95,4 +95,12 @@ impl HarnessKind {
             Self::ClaudeCode(_) => "claude-code",
         }
     }
+
+    /// Runs one attempt; `on_line` receives every raw stdout line with its 1-based sequence
+    /// number before it is parsed.
+    pub async fn run(&self, req: &HarnessRequest, on_line: impl FnMut(&str, u64)) -> RunOutcome {
+        match self {
+            Self::ClaudeCode(adapter) => adapter.run(req, on_line).await,
+        }
+    }
 }

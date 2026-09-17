@@ -356,12 +356,12 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `ClaudeCodeAdapter::run`: `tokio::process::Command` with `env_clear()` + the built env, `kill_on_drop(true)`, cwd = run dir, stdin closed; stdout read line by line and handed to `hooks.on_line(raw, seq)` while stderr is drained concurrently (last 4 kB kept); wall clock via `tokio::time::timeout` → SIGTERM with `nix::sys::signal::kill`, SIGKILL after 10 s; outcome mapping per `SPEC.md` §3. `tests/fake-claude/claude` replays a transcript file named by `FAKE_CLAUDE_TRANSCRIPT`, honours `FAKE_CLAUDE_HANG=1`, `FAKE_CLAUDE_EXIT=<n>`, `FAKE_CLAUDE_STDERR_BYTES=<n>`.
 
 **Acceptance criteria:**
-- [ ] test: `run_success_transcript`; `run_error_max_turns`; `run_hang_is_killed_by_wall_clock` (wall clock 300 ms, SIGTERM observed by the fake, `Killed`); `run_nonzero_exit_without_result`; `run_ends_without_result_line`; `run_survives_chatty_stderr` (1 MiB on stderr, still completes); `run_delivers_every_stdout_line_in_order`.
-- [ ] No `unsafe`; `nix` is the only signal path (grep test for `libc::`).
+- [x] test: `run_success_transcript`; `run_error_max_turns`; `run_hang_is_killed_by_wall_clock` (wall clock 300 ms, SIGTERM observed by the fake, `Killed`); `run_nonzero_exit_without_result`; `run_ends_without_result_line`; `run_survives_chatty_stderr` (1 MiB on stderr, still completes); `run_delivers_every_stdout_line_in_order`.
+- [x] No `unsafe`; `nix` is the only signal path (grep test for `libc::`).
 
 **Verification:**
-- [ ] `cargo test harness::claude_code`
-- [ ] fast checks clean
+- [x] `cargo test harness::claude_code`
+- [x] fast checks clean
 
 **Dependencies:** Task 18
 **Files likely touched:** `Cargo.toml` (`nix`), `src/harness/claude_code.rs`, `tests/fake-claude/claude`, `tests/fixtures/transcripts/no-result.jsonl`, `tests/it/harness.rs`

@@ -23,6 +23,7 @@ dom_smoothie = "0.18.1"
 fastembed = { version = "7.0.1", default-features = false, features = ["ort-download-binaries-rustls-tls", "hf-hub-rustls-tls"] }
 feed-rs = "2.4.0"
 futures-util = "0.3.34"
+nix = { version = "0.31.3", features = ["signal", "process"] }
 readability = { version = "0.3.0", default-features = false }
 reqwest = { version = "0.13.5", default-features = false, features = ["brotli", "charset", "gzip", "rustls", "stream"] }
 rmcp = { version = "3.4.0", features = ["server", "transport-io", "macros", "schemars", "client"] }
