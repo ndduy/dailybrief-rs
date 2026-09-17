@@ -272,12 +272,12 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Three tools over `core::candidates` and `core::staging`: `list_candidates { strategy, limit }` → `{ candidates: [...] }`, `search_items { query, limit }` (embed in `spawn_blocking`), `read_item { id }` → `{ id, title, source, text, wordCount, truncated }`.
 
 **Acceptance criteria:**
-- [ ] test: `list_candidates_rejects_unknown_strategy_at_schema_level` (enum in the input schema); `list_candidates_exploit_shape`; `search_items_embeds_query_locally`; `read_item_cap_error_message_matches_snapshot`; `read_item_text_is_5000_chars_max`.
-- [ ] `tools/list` has seven tools; snapshot updated.
+- [x] test: `list_candidates_rejects_unknown_strategy_at_schema_level` (enum in the input schema); `list_candidates_exploit_shape`; `search_items_embeds_query_locally`; `read_item_cap_error_message_matches_snapshot`; `read_item_text_is_5000_chars_max`.
+- [x] `tools/list` has seven tools; snapshot updated.
 
 **Verification:**
-- [ ] `cargo test mcp::`
-- [ ] fast checks clean
+- [x] `cargo test mcp::`
+- [x] fast checks clean
 
 **Dependencies:** Task 14
 **Files likely touched:** `src/mcp/server.rs`, `src/mcp/tools/list_candidates.rs`, `src/mcp/tools/search_items.rs`, `src/mcp/tools/read_item.rs`

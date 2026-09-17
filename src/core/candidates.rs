@@ -26,7 +26,7 @@ pub const POPULAR_PERCENTILE: f32 = 0.4;
 pub const POPULAR_UNMATCHED_NOTE: &str =
     "no social signal yet: low-exploit items ordered by source weight, then recency";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Strategy {
     Exploit,

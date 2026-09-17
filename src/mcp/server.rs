@@ -100,6 +100,37 @@ impl DailyBriefServer {
         guarded(tools::report_feed_issue::run(self, input)).await
     }
 
+    /// Rank the last 7 days of unseen items. exploit = closest to your profile; cold_topic = nearest to
+    /// topics with no recent positive signal; popular_unmatched = low profile match, ordered by source
+    /// weight then recency. Returns id, score, title, source, published, snippet.
+    #[tool]
+    async fn list_candidates(
+        &self,
+        Parameters(input): Parameters<tools::list_candidates::ListCandidatesInput>,
+    ) -> CallToolResult {
+        guarded(tools::list_candidates::run(self, input)).await
+    }
+
+    /// Embedding search over the last 7 days for a plain-language query (at most 30 results).
+    /// Use it only when an explore slot lacks a candidate.
+    #[tool]
+    async fn search_items(
+        &self,
+        Parameters(input): Parameters<tools::search_items::SearchItemsInput>,
+    ) -> CallToolResult {
+        guarded(tools::search_items::run(self, input)).await
+    }
+
+    /// Read an item's extracted text (first 5000 characters). You must read an item before you can
+    /// select it; at most 45 distinct items per run, re-reads are free.
+    #[tool]
+    async fn read_item(
+        &self,
+        Parameters(input): Parameters<tools::read_item::ReadItemInput>,
+    ) -> CallToolResult {
+        guarded(tools::read_item::run(self, input)).await
+    }
+
     /// Read or replace your notes: one text of at most 2000 characters that survives across runs.
     /// Use it for what you learned about sources and topics.
     #[tool]
@@ -261,7 +292,10 @@ mod tests {
                 "editor_notes",
                 "fetch_sources",
                 "get_briefing",
-                "report_feed_issue"
+                "list_candidates",
+                "read_item",
+                "report_feed_issue",
+                "search_items"
             ]
         );
         let tools = h.client.list_all_tools().await.unwrap();
