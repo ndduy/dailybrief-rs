@@ -1,6 +1,6 @@
 //! Shared fixtures for core tests: a source, an item with an optional vector, a shown digest row.
 
-use crate::config::Feed;
+use crate::config::{Feed, Topic, TopicOrigin};
 use crate::db::repo::{self, DigestInsert, DigestItemInsert, NewItem, Section};
 use crate::db::{Connection, DbError};
 
@@ -79,5 +79,19 @@ pub fn shown(conn: &Connection, item_id: &str, published_at: &str) -> Result<(),
             reason: None,
             topic: "T".into(),
         }],
+    )
+}
+
+/// A seed topic named `name` (no vector).
+pub fn topic(conn: &Connection, id: &str, name: &str) -> Result<(), DbError> {
+    repo::upsert_topic(
+        conn,
+        &Topic {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: String::new(),
+            weight: 1.0,
+            origin: TopicOrigin::Seed,
+        },
     )
 }

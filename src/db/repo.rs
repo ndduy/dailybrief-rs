@@ -527,6 +527,100 @@ pub fn list_read_vectors(conn: &Connection, limit: usize) -> Result<Vec<ReadVect
     Ok(rows)
 }
 
+// ---------- run_reads and selections (per-run staging, keyed by run id) ----------
+
+/// Records that `item_id` was read in `run_id`; idempotent.
+pub fn mark_run_read(conn: &Connection, run_id: &str, item_id: &str) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT OR IGNORE INTO run_reads (run_id, item_id) VALUES (?1, ?2)",
+        params![run_id, item_id],
+    )?;
+    Ok(())
+}
+
+pub fn list_run_reads(
+    conn: &Connection,
+    run_id: &str,
+) -> Result<std::collections::HashSet<String>, DbError> {
+    let mut stmt = conn.prepare("SELECT item_id FROM run_reads WHERE run_id = ?1")?;
+    let ids = stmt
+        .query_map([run_id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Selection {
+    pub item_id: String,
+    pub section: Section,
+    pub position: i64,
+    pub summary: String,
+    pub why_it_matters: String,
+    pub reason: Option<String>,
+    pub topic: String,
+}
+
+fn map_selection(row: &Row<'_>) -> rusqlite::Result<Selection> {
+    let section: String = row.get("section")?;
+    let section = Section::parse(&section).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            format!("unknown section '{section}'").into(),
+        )
+    })?;
+    Ok(Selection {
+        item_id: row.get("item_id")?,
+        section,
+        position: row.get("position")?,
+        summary: row.get("summary")?,
+        why_it_matters: row.get("why_it_matters")?,
+        reason: row.get("reason")?,
+        topic: row.get("topic")?,
+    })
+}
+
+/// Stages or restages one item for a run.
+pub fn upsert_selection(conn: &Connection, run_id: &str, s: &Selection) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO selections (run_id, item_id, section, position, summary, why_it_matters, reason, topic)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(run_id, item_id) DO UPDATE SET section = excluded.section,
+             position = excluded.position, summary = excluded.summary,
+             why_it_matters = excluded.why_it_matters, reason = excluded.reason, topic = excluded.topic",
+        params![
+            run_id,
+            s.item_id,
+            s.section.as_str(),
+            s.position,
+            s.summary,
+            s.why_it_matters,
+            s.reason,
+            s.topic
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn delete_selection(conn: &Connection, run_id: &str, item_id: &str) -> Result<bool, DbError> {
+    Ok(conn.execute(
+        "DELETE FROM selections WHERE run_id = ?1 AND item_id = ?2",
+        params![run_id, item_id],
+    )? > 0)
+}
+
+/// Staged rows for a run, by section then position.
+pub fn list_selections(conn: &Connection, run_id: &str) -> Result<Vec<Selection>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT item_id, section, position, summary, why_it_matters, reason, topic
+         FROM selections WHERE run_id = ?1 ORDER BY section, position, item_id",
+    )?;
+    let rows = stmt
+        .query_map([run_id], map_selection)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

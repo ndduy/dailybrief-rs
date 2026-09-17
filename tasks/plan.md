@@ -92,7 +92,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 ### Phase 2: Select (`core-select`)
 - [x] Task 9: Topic sync, profile vectors, `exploit`
 - [x] Task 10: `cold_topic`, `popular_unmatched`, `search_items`
-- [ ] Task 11: Per-run reads and staging with every `select` rejection
+- [x] Task 11: Per-run reads and staging with every `select` rejection
 - [ ] Task 12: Digest validation and publish
 
 ### Checkpoint C

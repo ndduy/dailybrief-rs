@@ -197,13 +197,13 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `core::staging`: `read_item` (unknown id → error; the `caps.reads`-th distinct id is the last allowed, re-reads free; text = first `read_text_chars` chars; writes `run_reads`), `stage_selection` with the rejections in the exact `SPEC.md` §4 order and one-sentence messages naming the value and the cap, `section: none` deletes, re-select replaces and keeps position when the section is unchanged. Repo additions: `run_reads`, `selections` CRUD. `StagingError` is a `thiserror` enum with one variant per rejection.
 
 **Acceptance criteria:**
-- [ ] test: `read_item_caps_distinct_ids_at_45`; `read_item_reread_is_free`; `read_item_truncates_by_chars` (5 001-char Vietnamese text → `truncated: true`, `text.chars().count() == 5000`); `read_item_unknown_id`.
-- [ ] test: one test per rejection, in order: `select_rejects_unknown_item`, `_unread_item`, `_empty_summary`, `_empty_why`, `_summary_over_80_words`, `_why_over_25_words`, `_unknown_topic_lists_known_names`, `_beyond_radar_without_reason`, `_beyond_radar_bad_reason`, `_shown_item`, `_fifth_from_same_source`, `_ninth_in_same_topic`, `_twenty_fifth_for_you`, `_seventh_beyond_radar`; plus `select_none_unstages`, `select_replaces_keeping_position`, `select_topic_match_is_case_insensitive`.
-- [ ] test: `insta` snapshot of every `StagingError` message.
+- [x] test: `read_item_caps_distinct_ids_at_45`; `read_item_reread_is_free`; `read_item_truncates_by_chars` (5 001-char Vietnamese text → `truncated: true`, `text.chars().count() == 5000`); `read_item_unknown_id`.
+- [x] test: one test per rejection, in order: `select_rejects_unknown_item`, `_unread_item`, `_empty_summary`, `_empty_why`, `_summary_over_80_words`, `_why_over_25_words`, `_unknown_topic_lists_known_names`, `_beyond_radar_without_reason`, `_beyond_radar_bad_reason`, `_shown_item`, `_fifth_from_same_source`, `_ninth_in_same_topic`, `_twenty_fifth_for_you`, `_seventh_beyond_radar`; plus `select_none_unstages`, `select_replaces_keeping_position`, `select_topic_match_is_case_insensitive`.
+- [x] test: `insta` snapshot of every `StagingError` message.
 
 **Verification:**
-- [ ] `cargo test core::staging`
-- [ ] fast checks clean
+- [x] `cargo test core::staging`
+- [x] fast checks clean
 
 **Dependencies:** Task 10
 **Files likely touched:** `src/core/staging.rs`, `src/db/repo.rs`

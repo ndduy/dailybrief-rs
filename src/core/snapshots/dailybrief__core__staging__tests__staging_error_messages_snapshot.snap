@@ -1,0 +1,20 @@
+---
+source: src/core/staging.rs
+expression: rendered
+---
+[
+    "No item with id 'x'. Use list_candidates or search_items.",
+    "Read cap of 45 reached for this run. Select from what you have read.",
+    "Read item 'x' with read_item before selecting it.",
+    "summary is required.",
+    "whyItMatters is required.",
+    "summary is 81 words; the cap is 80.",
+    "whyItMatters is 26 words; the cap is 25.",
+    "Unknown topic 'Cooking'. Known topics: AI Agents, Rust.",
+    "beyond_radar needs a reason: new_to_me, adjacent_field, contrarian, deep_dive, emerging.",
+    "Unknown reason 'because'. Reasons: new_to_me, adjacent_field, contrarian, deep_dive, emerging.",
+    "Item 'x' was shown in the last 14 days.",
+    "Source 'S' already has 4 selected items; the cap is 4 per source.",
+    "Topic 'Rust' already has 8 selected items; the cap is 8 per topic.",
+    "for_you already has 24 items; the cap is 24.",
+]

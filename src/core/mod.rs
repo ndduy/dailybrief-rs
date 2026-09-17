@@ -8,6 +8,7 @@ pub mod fetch;
 pub mod http;
 pub mod ingest;
 pub mod profile;
+pub mod staging;
 #[cfg(test)]
 pub mod testutil;
 pub mod time;
