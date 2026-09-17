@@ -1,4 +1,4 @@
-# Example feeds.toml. Copy entries into feeds.toml. Fields: id (required, [a-z0-9_-]),
+# Example feeds.toml. Copy entries into config/feeds.toml. Fields: id (required, [a-z0-9_-]),
 # url (required, http/https RSS or Atom), title (default: id), weight (default 1.0), enabled (default true).
 
 [[feeds]]

@@ -1,4 +1,0 @@
-tests/fixtures/brief.db binary
-tests/fixtures/html/** -diff
-tests/fixtures/vectors-200.json -diff
-tests/fixtures/runs/** -diff

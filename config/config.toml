@@ -1,11 +1,12 @@
-# dailybrief service configuration (spec/m1.md). Defaults for omitted keys are in src/config/schema.ts.
-# Environment overrides: DAILYBRIEF_CONFIG, DAILYBRIEF_DATA_DIR, DAILYBRIEF_BIND, DAILYBRIEF_IN_CONTAINER.
+# dailybrief service configuration (SPEC.md §7). The values shown here are the defaults for omitted keys.
+# feeds.toml and topics.toml are read from the same directory as this file.
+# Environment overrides: DAILYBRIEF_CONFIG (path to this file), DAILYBRIEF_DATA_DIR, DAILYBRIEF_BIND, DAILYBRIEF_IN_CONTAINER.
 
 [service]
 bind = "127.0.0.1"          # "0.0.0.0" is accepted only inside the container (DAILYBRIEF_IN_CONTAINER=1)
 port = 8788
 timezone = "Asia/Ho_Chi_Minh"
-data_dir = "data"           # relative to this file; the container sets DAILYBRIEF_DATA_DIR=/data
+data_dir = "data"           # relative to the project root (the parent of config/); the container sets DAILYBRIEF_DATA_DIR=/data
 
 [schedule]
 cron = "30 6 * * *"         # morning run, in service.timezone

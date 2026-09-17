@@ -6,6 +6,6 @@ data/
 models/
 *.log
 .DS_Store
-topics.draft.toml
+config/topics.draft.toml
 # fixtures are committed (tests/fixtures); scratch copies are not
 /tmp/
