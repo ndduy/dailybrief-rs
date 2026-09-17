@@ -29,14 +29,14 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Implement ADR 0002: `db::Db` with `open`, `open_in_memory`, `call`, pragmas; `db::migrations` holding the `SPEC.md` §5 `0001_init` DDL as a const; `db::migrate` creating the `migrations` ledger with `CREATE TABLE IF NOT EXISTS` and applying pending ids in order, each in one transaction with an RFC 3339 UTC `applied_at`. Add the `migrate` CLI verb.
 
 **Acceptance criteria:**
-- [ ] test: `db::migrate::applies_0001_on_empty_db` (all §5 tables and indexes exist); `applying_twice_is_a_noop` (second call returns an empty list, ledger row count unchanged); `ledger_row_has_rfc3339_millis_z`.
-- [ ] test: `db::pragmas_are_set` (WAL, `synchronous=1`, `busy_timeout=5000`, `foreign_keys=1` read back from a file-backed temp DB).
-- [ ] test: `db::call_maps_poisoned_lock_to_error`; `foreign_key_violation_is_rejected` (inserting an `items` row for a missing source fails).
-- [ ] `dailybrief migrate` prints the ids applied and exits 0; a second run prints nothing new.
+- [x] test: `db::migrate::applies_0001_on_empty_db` (all §5 tables and indexes exist); `applying_twice_is_a_noop` (second call returns an empty list, ledger row count unchanged); `ledger_row_has_rfc3339_millis_z`.
+- [x] test: `db::pragmas_are_set` (WAL, `synchronous=1`, `busy_timeout=5000`, `foreign_keys=1` read back from a file-backed temp DB).
+- [x] test: `db::call_maps_poisoned_lock_to_error`; `foreign_key_violation_is_rejected` (inserting an `items` row for a missing source fails).
+- [x] `dailybrief migrate` prints the ids applied and exits 0; a second run prints nothing new.
 
 **Verification:**
-- [ ] `cargo test db::`
-- [ ] `cargo run -- migrate` twice against `DAILYBRIEF_DATA_DIR=$(mktemp -d)`
+- [x] `cargo test db::`
+- [x] `cargo run -- migrate` twice against `DAILYBRIEF_DATA_DIR=$(mktemp -d)`
 
 **Dependencies:** Task 1
 **Files likely touched:** `src/db/mod.rs`, `src/db/migrate.rs`, `src/db/migrations.rs`, `src/commands/mod.rs`, `src/commands/migrate.rs`
