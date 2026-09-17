@@ -91,13 +91,13 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `core::dedupe`: `canonical_url` (drop fragment, lowercase host, strip `utm_*`, `fbclid`, `gclid`, `mc_cid`, `mc_eid`, `ref`, `source`, `igshid`, `_hs*`; sort remaining query keys; strip one trailing slash on non-root paths), `title_hash` (lowercase, non-alphanumeric runs → one space, trim, SHA-256 hex), `content_hash` (whitespace-collapsed, SHA-256 hex), `item_id` (first 16 hex of SHA-256 of the canonical URL), and `find_duplicate` (URL → title → cosine > `dedupe_cosine` against items since 14 days).
 
 **Acceptance criteria:**
-- [ ] test: table of ≥ 12 URL cases incl. tracking params, uppercase host, trailing slash, root path, fragment, unparsable input returned trimmed.
-- [ ] test: `title_hash_ignores_case_and_punctuation`; `title_hash_handles_vietnamese_diacritics` (`\p{L}` kept); `content_hash_ignores_whitespace_runs`.
-- [ ] test: `find_duplicate_by_url`, `_by_title`, `_by_cosine_over_threshold`, `_none_when_vector_missing`, `_ignores_items_older_than_window`.
+- [x] test: table of ≥ 12 URL cases incl. tracking params, uppercase host, trailing slash, root path, fragment, unparsable input returned trimmed.
+- [x] test: `title_hash_ignores_case_and_punctuation`; `title_hash_handles_vietnamese_diacritics` (`\p{L}` kept); `content_hash_ignores_whitespace_runs`.
+- [x] test: `find_duplicate_by_url`, `_by_title`, `_by_cosine_over_threshold`, `_none_when_vector_missing`, `_ignores_items_older_than_window`.
 
 **Verification:**
-- [ ] `cargo test core::dedupe`
-- [ ] fast checks clean
+- [x] `cargo test core::dedupe`
+- [x] fast checks clean
 
 **Dependencies:** Task 3
 **Files likely touched:** `Cargo.toml` (`sha2`, `url`), `src/core/dedupe.rs`

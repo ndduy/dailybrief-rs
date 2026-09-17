@@ -79,7 +79,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 
 ### Phase 1: Ingest (`core-ingest`)
 - [x] Task 4: `Embedder` trait, fake, fastembed implementation, cosine
-- [ ] Task 5: Canonical URL, hashes, item ids, duplicate detection
+- [x] Task 5: Canonical URL, hashes, item ids, duplicate detection
 - [ ] Task 6: HTTP client and feed fetch (conditional GET, caps, redirects)
 - [ ] Task 7: Article extraction with fixtures
 - [ ] Task 8: Ingest pipeline and the `fetch` verb

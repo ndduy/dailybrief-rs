@@ -11,7 +11,7 @@ pub use migrate::{applied_migrations, migrate};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rusqlite::Connection;
+pub use rusqlite::Connection;
 
 /// Every way database access can fail.
 #[derive(Debug, thiserror::Error)]
