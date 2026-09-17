@@ -20,24 +20,24 @@ fn now() -> DateTime<Utc> {
 
 fn state(db: Db) -> AppState {
     let config = load_config(&Env::from_lookup(|_| None).unwrap()).unwrap();
-    AppState {
-        db,
-        tz: parse_tz(&config.service.timezone).unwrap(),
-        config,
-        now,
-    }
+    let tz = parse_tz(&config.service.timezone).unwrap();
+    AppState::new(db, config, tz, now, None)
 }
 
-async fn get(db: Db, path: &str) -> (StatusCode, axum::http::HeaderMap, String) {
-    let app = router(state(db));
-    let res = app
-        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-        .await
-        .unwrap();
+async fn send(state: AppState, req: Request<Body>) -> (StatusCode, axum::http::HeaderMap, String) {
+    let res = router(state).oneshot(req).await.unwrap();
     let status = res.status();
     let headers = res.headers().clone();
     let body = res.into_body().collect().await.unwrap().to_bytes();
-    (status, headers, String::from_utf8(body.to_vec()).unwrap())
+    (status, headers, String::from_utf8_lossy(&body).into_owned())
+}
+
+async fn get(db: Db, path: &str) -> (StatusCode, axum::http::HeaderMap, String) {
+    send(
+        state(db),
+        Request::builder().uri(path).body(Body::empty()).unwrap(),
+    )
+    .await
 }
 
 fn run_row(db: &Db, id: &str, status: RunStatus, error: Option<&str>) {
@@ -225,4 +225,265 @@ async fn unknown_route_bad_date_and_security_headers() {
     assert_eq!(headers["x-frame-options"], "DENY");
     let (status, _, _) = get(db, "/d/2026-02-30").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+// ---------- Task 23: redirect, transcript, POST /run, /run/status ----------
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::http::header;
+use dailybrief::core::embed::FakeEmbedder;
+use dailybrief::harness::claude_code::ClaudeCodeAdapter;
+use dailybrief::harness::service_runner::{ServiceRunner, ServiceRunnerOptions};
+use dailybrief::harness::types::HarnessKind;
+
+/// A state whose runner drives the fake `claude`; `hang` keeps the run alive for the 409 case.
+fn state_with_runner(db: Db, tmp: &std::path::Path, hang: bool) -> AppState {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let data = tmp.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let data_s = data.to_string_lossy().into_owned();
+    let config = load_config(
+        &Env::from_lookup(|n| (n == "DAILYBRIEF_DATA_DIR").then(|| data_s.clone())).unwrap(),
+    )
+    .unwrap();
+    let mut parent: HashMap<String, String> = HashMap::new();
+    parent.insert("PATH".into(), std::env::var("PATH").unwrap_or_default());
+    parent.insert("HOME".into(), "/tmp".into());
+    parent.insert("CLAUDE_CODE_OAUTH_TOKEN".into(), "fake".into());
+    parent.insert(
+        "DAILYBRIEF_FAKE_TRANSCRIPT".into(),
+        root.join("tests/fixtures/transcripts/success.jsonl")
+            .to_string_lossy()
+            .into_owned(),
+    );
+    if hang {
+        parent.insert("DAILYBRIEF_FAKE_HANG".into(), "1".into());
+    }
+    let mut a = ClaudeCodeAdapter::new(config.harness.claude_code.clone(), &parent).unwrap();
+    a.binary = root.join("tests/fake-claude/claude");
+    a.wall_clock = Duration::from_secs(5);
+    let runner = ServiceRunner::with_harness(
+        config.clone(),
+        db.clone(),
+        Vec::new(),
+        Arc::new(FakeEmbedder),
+        HarnessKind::ClaudeCode(a),
+        ServiceRunnerOptions {
+            verify: false,
+            max_attempts: 1,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let tz = parse_tz(&config.service.timezone).unwrap();
+    AppState::new(db, config, tz, now, Some(Arc::new(runner)))
+}
+
+fn post_run(accept_json: bool, extra: &[(&str, &str)]) -> Request<Body> {
+    let mut b = Request::builder()
+        .method("POST")
+        .uri("/run")
+        .header("host", "dailybrief.example");
+    if accept_json {
+        b = b.header(header::ACCEPT, "application/json");
+    }
+    for (k, v) in extra {
+        b = b.header(*k, *v);
+    }
+    b.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn redirect_logs_read_and_302s_and_unknown_is_404() {
+    let db = Db::open_in_memory().unwrap();
+    let digest_id = published(&db);
+    let (status, headers, _) = get(db.clone(), "/r/i03").await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(headers[header::LOCATION], "https://src0.example/i03");
+    let (item, digest, at): (String, Option<String>, String) = db
+        .with(|c| {
+            Ok(
+                c.query_row("SELECT item_id, digest_id, at FROM reads", [], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })?,
+            )
+        })
+        .unwrap();
+    assert_eq!(item, "i03");
+    assert_eq!(digest.as_deref(), Some(digest_id.as_str()));
+    assert_eq!(at, "2026-09-16T23:45:00.000Z");
+    let (status, _, _) = get(db, "/r/nope").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn transcript_streams_file_and_unknown_is_404() {
+    let db = Db::open_in_memory().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("transcript.jsonl");
+    std::fs::write(&path, "{\"type\":\"system\"}\n{\"type\":\"result\"}\n").unwrap();
+    db.with(|c| {
+        repo::insert_run(
+            c,
+            &NewRun {
+                id: "2026-09-17-t1".into(),
+                kind: RunKind::Manual,
+                harness: "claude-code".into(),
+                attempt: 1,
+                started_at: "2026-09-16T23:30:00.000Z".into(),
+                transcript_path: Some(path.to_string_lossy().into_owned()),
+            },
+        )?;
+        repo::insert_run(
+            c,
+            &NewRun {
+                id: "2026-09-17-gone".into(),
+                kind: RunKind::Manual,
+                harness: "claude-code".into(),
+                attempt: 1,
+                started_at: "2026-09-16T23:31:00.000Z".into(),
+                transcript_path: Some("/nonexistent/transcript.jsonl".into()),
+            },
+        )
+    })
+    .unwrap();
+    let (status, headers, body) = get(db.clone(), "/runs/2026-09-17-t1/transcript").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("application/x-ndjson")
+    );
+    assert_eq!(body, "{\"type\":\"system\"}\n{\"type\":\"result\"}\n");
+    let (status, _, _) = get(db.clone(), "/runs/2026-09-17-gone/transcript").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, _) = get(db, "/runs/unknown/transcript").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn post_run_503_without_runner_and_403_cross_origin() {
+    let db = Db::open_in_memory().unwrap();
+    let (status, _, body) = send(state(db.clone()), post_run(true, &[])).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(body.contains("not enabled"));
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db.clone(), tmp.path(), false);
+    let (status, _, _) = send(
+        st.clone(),
+        post_run(true, &[("sec-fetch-site", "cross-site")]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, body) = send(st, post_run(false, &[("origin", "https://evil.example")])).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(body.contains("cross-origin"));
+}
+
+#[tokio::test]
+async fn post_run_passes_same_origin_and_no_origin_with_202_json_and_303_html() {
+    let db = Db::open_in_memory().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db.clone(), tmp.path(), false);
+    let (status, _, body) = send(
+        st.clone(),
+        post_run(true, &[("sec-fetch-site", "same-origin")]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(body, "{\"started\":true}");
+    // Let the fake finish so the process-level guard is released.
+    for _ in 0..100 {
+        if !st.active.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let (status, headers, _) = send(
+        st.clone(),
+        post_run(false, &[("origin", "https://dailybrief.example")]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/");
+    for _ in 0..100 {
+        if !st.active.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let (status, _, _) = send(st, post_run(true, &[])).await;
+    assert_eq!(
+        status,
+        StatusCode::ACCEPTED,
+        "no Origin and no Sec-Fetch-Site: a non-browser client"
+    );
+}
+
+#[tokio::test]
+async fn post_run_429_after_cap() {
+    let db = Db::open_in_memory().unwrap();
+    for i in 0..3 {
+        db.with(|c| {
+            repo::insert_run(
+                c,
+                &NewRun {
+                    id: format!("2026-09-17-m{i}"),
+                    kind: RunKind::Manual,
+                    harness: "claude-code".into(),
+                    attempt: 1,
+                    started_at: "2026-09-16T23:30:00.000Z".into(),
+                    transcript_path: None,
+                },
+            )
+        })
+        .unwrap();
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db, tmp.path(), false);
+    let (status, _, body) = send(st, post_run(true, &[])).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(body.contains("3 per 24 h"));
+}
+
+#[tokio::test]
+async fn post_run_409_when_active_and_run_status_reflects_it() {
+    let db = Db::open_in_memory().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db, tmp.path(), true);
+    let (status, _, body) = send(
+        st.clone(),
+        Request::builder()
+            .uri("/run/status")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "{\"active\":false}");
+    let (status, _, _) = send(st.clone(), post_run(true, &[])).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let (_, _, body) = send(
+        st.clone(),
+        Request::builder()
+            .uri("/run/status")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(body, "{\"active\":true}");
+    let (status, _, body) = send(st.clone(), post_run(true, &[])).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("already in progress"));
+    let (status, headers, _) = send(st, post_run(false, &[])).await;
+    assert_eq!(
+        status,
+        StatusCode::SEE_OTHER,
+        "browsers go home even when busy"
+    );
+    assert_eq!(headers[header::LOCATION], "/");
 }

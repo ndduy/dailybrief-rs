@@ -1,16 +1,20 @@
 //! Router, shared state, the bind guard and the security headers every response carries.
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
 use axum::Router;
 use axum::http::{HeaderValue, header};
 use axum::middleware::{self, Next};
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing::{get, post};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 
 use super::routes;
 use crate::config::Config;
 use crate::db::Db;
+use crate::harness::service_runner::ServiceRunner;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum BindError {
@@ -34,12 +38,39 @@ pub struct AppState {
     pub config: Config,
     pub tz: Tz,
     pub now: fn() -> DateTime<Utc>,
+    /// `None` disables `POST /run` (503); the scheduler shares the same runner.
+    pub runner: Option<Arc<ServiceRunner>>,
+    /// One manual run in flight per process; the database lock covers other processes.
+    pub active: Arc<AtomicBool>,
+}
+
+impl AppState {
+    pub fn new(
+        db: Db,
+        config: Config,
+        tz: Tz,
+        now: fn() -> DateTime<Utc>,
+        runner: Option<Arc<ServiceRunner>>,
+    ) -> Self {
+        Self {
+            db,
+            config,
+            tz,
+            now,
+            runner,
+            active: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(routes::digest::today))
         .route("/d/{date}", get(routes::digest::day))
+        .route("/r/{id}", get(routes::redirect::click))
+        .route("/run", post(routes::run::start))
+        .route("/run/status", get(routes::run::status))
+        .route("/runs/{id}/transcript", get(routes::transcript::download))
         .fallback(routes::not_found)
         .layer(middleware::from_fn(security_headers))
         .with_state(state)

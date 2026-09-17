@@ -1,6 +1,9 @@
 //! Route handlers. Each one maps a request onto repo calls inside one `Db::call` and a view.
 
 pub mod digest;
+pub mod redirect;
+pub mod run;
+pub mod transcript;
 
 use axum::http::StatusCode;
 use axum::response::IntoResponse;

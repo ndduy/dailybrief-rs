@@ -107,7 +107,10 @@ async fn main() -> anyhow::Result<()> {
             .await?;
             std::process::exit(code);
         }
-        Command::Serve => commands::serve::run(&env).await?,
+        Command::Serve => {
+            let process_env: std::collections::HashMap<String, String> = std::env::vars().collect();
+            commands::serve::run(&env, &process_env).await?;
+        }
         Command::ScanTranscript { path } => {
             let code = commands::scan_transcript::run(&env, &path, &mut std::io::stdout()).await?;
             std::process::exit(code);

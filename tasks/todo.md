@@ -431,11 +431,11 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `routes::redirect` (`/r/{id}`: insert `reads(item, digest shown in, now)`, 302 to `canonical_url`, 404 unknown), `routes::transcript` (`/runs/{id}/transcript` streams the file), `routes::run` (`POST /run`: 503 when no runner, 403 when cross-origin per `SPEC.md` §7b, 429 past 3 manual runs in 24 h, 409 when a run is active, else spawn and 202 or 303 for browsers; `GET /run/status`). `serve` starts the scheduler task. Repo additions: `reads`, `count_runs_since`.
 
 **Acceptance criteria:**
-- [ ] test: `redirect_logs_read_and_302s`; `redirect_unknown_is_404`; `transcript_streams_file`; `transcript_unknown_is_404`; `post_run_503_without_runner`; `post_run_403_cross_origin` (`Origin` host mismatch; `Sec-Fetch-Site: cross-site`); `post_run_passes_same_origin_and_no_origin`; `post_run_429_after_cap`; `post_run_409_when_active`; `post_run_202_json_and_303_html`; `run_status_reflects_active`.
+- [x] test: `redirect_logs_read_and_302s`; `redirect_unknown_is_404`; `transcript_streams_file`; `transcript_unknown_is_404`; `post_run_503_without_runner`; `post_run_403_cross_origin` (`Origin` host mismatch; `Sec-Fetch-Site: cross-site`); `post_run_passes_same_origin_and_no_origin`; `post_run_429_after_cap`; `post_run_409_when_active`; `post_run_202_json_and_303_html`; `run_status_reflects_active`.
 
 **Verification:**
-- [ ] `cargo test web::`
-- [ ] fast checks clean
+- [x] `cargo test web::`
+- [x] fast checks clean
 
 **Dependencies:** Task 22
 **Files likely touched:** `src/web/routes/redirect.rs`, `src/web/routes/transcript.rs`, `src/web/routes/run.rs`, `src/web/app.rs`, `src/commands/serve.rs`

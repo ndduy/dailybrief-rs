@@ -1089,6 +1089,18 @@ pub fn latest_run_between(
         .optional()?)
 }
 
+/// The most recently published digest that showed `item_id`, if any.
+pub fn latest_digest_for_item(conn: &Connection, item_id: &str) -> Result<Option<String>, DbError> {
+    Ok(conn
+        .query_row(
+            "SELECT d.id FROM digest_items di JOIN digests d ON d.id = di.digest_id
+             WHERE di.item_id = ?1 ORDER BY d.published_at DESC LIMIT 1",
+            [item_id],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
