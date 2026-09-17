@@ -605,6 +605,7 @@ dependencies = [
  "reqwest 0.13.5",
  "rusqlite",
  "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "thiserror",

@@ -5,5 +5,6 @@ pub mod embed;
 pub mod extract;
 pub mod fetch;
 pub mod http;
+pub mod ingest;
 pub mod time;
 pub mod vector;

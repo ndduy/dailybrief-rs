@@ -15,13 +15,19 @@ struct Cli {
 enum Command {
     /// Apply pending SQL migrations to <data_dir>/brief.db.
     Migrate,
+    /// Ingest every enabled feed once (no agent) and print the report.
+    Fetch,
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let env = Env::from_process()?;
     match cli.command {
         Command::Migrate => commands::migrate::run(&env, &mut std::io::stdout())?,
+        Command::Fetch => {
+            commands::fetch::run(&env, &mut std::io::stdout()).await?;
+        }
     }
     Ok(())
 }
