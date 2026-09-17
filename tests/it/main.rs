@@ -4,4 +4,5 @@
 mod harness;
 mod mcp;
 mod mcp_stdout;
+mod runner;
 mod scenario;

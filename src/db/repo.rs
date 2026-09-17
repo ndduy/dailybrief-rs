@@ -796,6 +796,228 @@ pub fn set_source_last_error(conn: &Connection, id: &str, error: &str) -> Result
     Ok(())
 }
 
+// ---------- runs: lifecycle, events, lock ----------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunStatus {
+    Running,
+    Success,
+    Failed,
+    Killed,
+}
+
+impl RunStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Success => "success",
+            Self::Failed => "failed",
+            Self::Killed => "killed",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "running" => Some(Self::Running),
+            "success" => Some(Self::Success),
+            "failed" => Some(Self::Failed),
+            "killed" => Some(Self::Killed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunRow {
+    pub id: String,
+    pub kind: String,
+    pub harness: String,
+    pub status: RunStatus,
+    pub attempt: i64,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub turns: Option<i64>,
+    pub usage_json: Option<String>,
+    pub cost_usd: Option<f64>,
+    pub session_id: Option<String>,
+    pub error: Option<String>,
+    pub transcript_path: Option<String>,
+}
+
+const RUN_COLS: &str = "id, kind, harness, status, attempt, started_at, ended_at, turns, usage_json, \
+                        cost_usd, session_id, error, transcript_path";
+
+fn map_run(row: &Row<'_>) -> rusqlite::Result<RunRow> {
+    let status: String = row.get("status")?;
+    let status = RunStatus::parse(&status).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            format!("unknown run status '{status}'").into(),
+        )
+    })?;
+    Ok(RunRow {
+        id: row.get("id")?,
+        kind: row.get("kind")?,
+        harness: row.get("harness")?,
+        status,
+        attempt: row.get("attempt")?,
+        started_at: row.get("started_at")?,
+        ended_at: row.get("ended_at")?,
+        turns: row.get("turns")?,
+        usage_json: row.get("usage_json")?,
+        cost_usd: row.get("cost_usd")?,
+        session_id: row.get("session_id")?,
+        error: row.get("error")?,
+        transcript_path: row.get("transcript_path")?,
+    })
+}
+
+pub fn get_run(conn: &Connection, id: &str) -> Result<Option<RunRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {RUN_COLS} FROM runs WHERE id = ?1"),
+            [id],
+            map_run,
+        )
+        .optional()?)
+}
+
+/// The most recently started run, if any.
+pub fn latest_run(conn: &Connection) -> Result<Option<RunRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {RUN_COLS} FROM runs ORDER BY started_at DESC, id DESC LIMIT 1"),
+            [],
+            map_run,
+        )
+        .optional()?)
+}
+
+/// Runs of `kind` started at or after `since`.
+pub fn count_runs_since(conn: &Connection, kind: RunKind, since: &str) -> Result<i64, DbError> {
+    Ok(conn.query_row(
+        "SELECT count(*) FROM runs WHERE kind = ?1 AND started_at >= ?2",
+        params![kind.as_str(), since],
+        |r| r.get(0),
+    )?)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunFinish {
+    pub status: RunStatus,
+    pub ended_at: String,
+    pub turns: Option<i64>,
+    pub usage_json: Option<String>,
+    pub cost_usd: Option<f64>,
+    pub session_id: Option<String>,
+    pub error: Option<String>,
+}
+
+pub fn finish_run(conn: &Connection, id: &str, f: &RunFinish) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE runs SET status = ?2, ended_at = ?3, turns = ?4, usage_json = ?5, cost_usd = ?6,
+             session_id = ?7, error = ?8 WHERE id = ?1",
+        params![
+            id,
+            f.status.as_str(),
+            f.ended_at,
+            f.turns,
+            f.usage_json,
+            f.cost_usd,
+            f.session_id,
+            f.error
+        ],
+    )?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunEvent {
+    pub seq: i64,
+    pub kind: String,
+    pub payload_json: String,
+}
+
+pub fn append_run_event(
+    conn: &Connection,
+    run_id: &str,
+    seq: i64,
+    kind: &str,
+    payload_json: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO run_events (run_id, seq, type, payload_json) VALUES (?1, ?2, ?3, ?4)",
+        params![run_id, seq, kind, payload_json],
+    )?;
+    Ok(())
+}
+
+pub fn list_run_events(conn: &Connection, run_id: &str) -> Result<Vec<RunEvent>, DbError> {
+    let mut stmt = conn
+        .prepare("SELECT seq, type, payload_json FROM run_events WHERE run_id = ?1 ORDER BY seq")?;
+    let rows = stmt
+        .query_map([run_id], |r| {
+            Ok(RunEvent {
+                seq: r.get(0)?,
+                kind: r.get(1)?,
+                payload_json: r.get(2)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LockResult {
+    Acquired,
+    Held { run_id: String, acquired_at: String },
+}
+
+/// Takes the single `run_lock` row unless a live holder exists; a holder older than
+/// `stale_before` is taken over.
+pub fn try_acquire_lock(
+    conn: &Connection,
+    holder: &str,
+    now: &str,
+    stale_before: &str,
+) -> Result<LockResult, DbError> {
+    let existing: Option<(String, String)> = conn
+        .query_row(
+            "SELECT run_id, acquired_at FROM run_lock WHERE id = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    match existing {
+        Some((run_id, acquired_at)) if acquired_at.as_str() >= stale_before => {
+            Ok(LockResult::Held {
+                run_id,
+                acquired_at,
+            })
+        }
+        Some(_) => {
+            conn.execute(
+                "UPDATE run_lock SET run_id = ?1, acquired_at = ?2 WHERE id = 1",
+                params![holder, now],
+            )?;
+            Ok(LockResult::Acquired)
+        }
+        None => {
+            conn.execute(
+                "INSERT INTO run_lock (id, run_id, acquired_at) VALUES (1, ?1, ?2)",
+                params![holder, now],
+            )?;
+            Ok(LockResult::Acquired)
+        }
+    }
+}
+
+pub fn release_lock(conn: &Connection) -> Result<(), DbError> {
+    conn.execute("DELETE FROM run_lock WHERE id = 1", [])?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

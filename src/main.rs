@@ -19,6 +19,30 @@ enum Command {
     Fetch,
     /// Serve the editor tools over stdio (spawned by the harness via mcp.json).
     Mcp,
+    /// Run the Editor once now (same code path as the scheduler and POST /run).
+    Run {
+        /// Harness to use (only claude-code in R0).
+        #[arg(long)]
+        harness: Option<String>,
+        /// manual | scheduled
+        #[arg(long, default_value = "manual")]
+        kind: String,
+        /// Attempts (1 or 2; 2 = retry once).
+        #[arg(long, default_value_t = 2)]
+        attempts: u32,
+        /// Accept a harness success without a digest row (smoke runs only).
+        #[arg(long)]
+        no_verify: bool,
+        /// System prompt file override.
+        #[arg(long)]
+        prompt: Option<std::path::PathBuf>,
+        /// Output schema override.
+        #[arg(long)]
+        schema: Option<std::path::PathBuf>,
+        /// User message override.
+        #[arg(long)]
+        message: Option<String>,
+    },
 }
 
 /// Logs go to stderr in every command: stdout is the MCP protocol stream for `mcp` and the
@@ -44,6 +68,38 @@ async fn main() -> anyhow::Result<()> {
             commands::fetch::run(&env, &mut std::io::stdout()).await?;
         }
         Command::Mcp => commands::mcp::run(&env).await?,
+        Command::Run {
+            harness,
+            kind,
+            attempts,
+            no_verify,
+            prompt,
+            schema,
+            message,
+        } => {
+            let kind = match kind.as_str() {
+                "manual" => dailybrief::db::repo::RunKind::Manual,
+                "scheduled" => dailybrief::db::repo::RunKind::Scheduled,
+                other => anyhow::bail!("run: --kind must be manual or scheduled, got '{other}'"),
+            };
+            let process_env: std::collections::HashMap<String, String> = std::env::vars().collect();
+            let code = commands::run::run(
+                &env,
+                commands::run::RunArgs {
+                    harness,
+                    kind,
+                    prompt,
+                    schema,
+                    message,
+                    verify: !no_verify,
+                    attempts,
+                },
+                &process_env,
+                &mut std::io::stdout(),
+            )
+            .await?;
+            std::process::exit(code);
+        }
     }
     Ok(())
 }

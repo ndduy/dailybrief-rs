@@ -4,6 +4,7 @@
 pub mod fetch;
 pub mod mcp;
 pub mod migrate;
+pub mod run;
 
 use std::path::PathBuf;
 
@@ -28,6 +29,10 @@ pub enum CommandError {
     Usage(String),
     #[error("mcp: {0}")]
     Mcp(String),
+    #[error(transparent)]
+    Runner(#[from] crate::harness::runner::RunnerError),
+    #[error(transparent)]
+    Env(#[from] crate::harness::claude_code::EnvError),
 }
 
 /// The SQLite file inside the data directory.

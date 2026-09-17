@@ -372,14 +372,14 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `harness::runner`: acquire `run_lock` (single row, TTL `2 × wall_clock + 5` min, stale takeover), then up to `max_attempts` attempts, each with a fresh run id (`YYYY-MM-DD-<8 hex>`), run dir, rendered `mcp.json`, empty transcript, `runs` row (`running` → final), every line appended to the transcript file and `run_events`, outcome classified with `harness::verify` (structured output validates against `DigestOutput` **and** a digest row exists for the run **and** ids match). `service_runner` syncs topics before running. `commands::run` with `--harness --kind --attempts --no-verify --prompt --schema --message`. Repo additions: `runs`, `run_events`, `run_lock`.
 
 **Acceptance criteria:**
-- [ ] test: `runner_retries_once_then_succeeds` (max-turns then success → two `runs` rows, second `success`); `runner_marks_killed`; `runner_marks_failed_when_no_digest_row` (harness success, no digest → `failed` with the verify message); `runner_marks_failed_on_digest_id_mismatch`; `runner_writes_transcript_and_run_events_in_order`; `runner_refuses_when_locked`; `runner_takes_over_stale_lock`; `runner_releases_lock_on_adapter_panic`.
-- [ ] test: `two_db_handles_write_one_file_concurrently` (a `serve`-side writer and an `mcp`-side writer interleave 200 writes without `SQLITE_BUSY`).
-- [ ] `dailybrief run` with the fake `claude` on `PATH` prints the `RunSummary` JSON and exits 0/1/3 (success / failed / locked).
+- [x] test: `runner_retries_once_then_succeeds` (max-turns then success → two `runs` rows, second `success`); `runner_marks_killed`; `runner_marks_failed_when_no_digest_row` (harness success, no digest → `failed` with the verify message); `runner_marks_failed_on_digest_id_mismatch`; `runner_writes_transcript_and_run_events_in_order`; `runner_refuses_when_locked`; `runner_takes_over_stale_lock`; `runner_releases_lock_on_adapter_panic`.
+- [x] test: `two_db_handles_write_one_file_concurrently` (a `serve`-side writer and an `mcp`-side writer interleave 200 writes without `SQLITE_BUSY`).
+- [x] `dailybrief run` with the fake `claude` on `PATH` prints the `RunSummary` JSON and exits 0/1/3 (success / failed / locked).
 
 **Verification:**
-- [ ] `cargo test harness::runner harness::verify`
-- [ ] `PATH=tests/fake-claude:$PATH FAKE_CLAUDE_TRANSCRIPT=... cargo run -- run --attempts 1 --no-verify` on a temp data dir
-- [ ] fast checks clean
+- [x] `cargo test harness::runner harness::verify`
+- [x] `PATH=tests/fake-claude:$PATH FAKE_CLAUDE_TRANSCRIPT=... cargo run -- run --attempts 1 --no-verify` on a temp data dir
+- [x] fast checks clean
 
 **Dependencies:** Task 19
 **Files likely touched:** `src/harness/runner.rs`, `src/harness/verify.rs`, `src/harness/service_runner.rs`, `src/commands/run.rs`, `src/db/repo.rs`

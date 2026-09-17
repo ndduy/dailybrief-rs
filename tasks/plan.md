@@ -119,7 +119,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 ### Phase 5: Harness (`harness-claude`)
 - [x] Task 18: Harness types, argv builder, env allowlist, stream-json events
 - [x] Task 19: Spawning `claude`: stdout/stderr, wall clock, outcome mapping, fake `claude`
-- [ ] Task 20: Runner: lock, attempts, `runs` rows, transcript, verify; the `run` verb
+- [x] Task 20: Runner: lock, attempts, `runs` rows, transcript, verify; the `run` verb
 - [ ] Task 21: Scheduler loop and transcript scan; the `scan-transcript` verb
 
 ### Checkpoint F

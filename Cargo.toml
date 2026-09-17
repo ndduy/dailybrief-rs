@@ -2,6 +2,7 @@
 name = "dailybrief"
 version = "0.1.0"
 edition = "2024"
+default-run = "dailybrief"
 
 [[bin]]
 name = "gen-schemas"
@@ -38,6 +39,7 @@ toml = "1.1.6"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
 url = "2.5.8"
+uuid = { version = "1.26.1", features = ["v4"] }
 
 [dev-dependencies]
 insta = { version = "1.48.0", features = ["json"] }

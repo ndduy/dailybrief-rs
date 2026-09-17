@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# A stand-in for `claude -p` in adapter tests. It ignores its arguments and is driven by
-# DAILYBRIEF_FAKE_* variables (the prefix passes the adapter's env allowlist):
+# A stand-in for `claude -p` in adapter and runner tests. It ignores its arguments and is driven
+# by DAILYBRIEF_FAKE_* variables (the prefix passes the adapter's env allowlist):
 #   DAILYBRIEF_FAKE_TRANSCRIPT    stream-json file to replay on stdout, line by line
+#   DAILYBRIEF_FAKE_SCRIPT_DIR    directory with 1.jsonl, 2.jsonl, …: attempt N replays N.jsonl
+#                                 (the last one when N is past the end); a `count` file tracks N
 #   DAILYBRIEF_FAKE_STDERR_BYTES  bytes of noise to write on stderr before anything else
 #   DAILYBRIEF_FAKE_HANG=1        after replaying, sleep until SIGTERM (exit 143) or SIGKILL
 #   DAILYBRIEF_FAKE_TERM_MARKER   file to create when SIGTERM is received (proves TERM before KILL)
@@ -10,7 +12,14 @@ set -u
 if [ -n "${DAILYBRIEF_FAKE_STDERR_BYTES:-}" ]; then
   head -c "$DAILYBRIEF_FAKE_STDERR_BYTES" /dev/zero | tr '\0' 'e' >&2
 fi
-if [ -n "${DAILYBRIEF_FAKE_TRANSCRIPT:-}" ]; then
+if [ -n "${DAILYBRIEF_FAKE_SCRIPT_DIR:-}" ]; then
+  counter="$DAILYBRIEF_FAKE_SCRIPT_DIR/count"
+  n=$(( $(cat "$counter" 2>/dev/null || echo 0) + 1 ))
+  echo "$n" > "$counter"
+  file="$DAILYBRIEF_FAKE_SCRIPT_DIR/$n.jsonl"
+  while [ ! -f "$file" ] && [ "$n" -gt 1 ]; do n=$((n - 1)); file="$DAILYBRIEF_FAKE_SCRIPT_DIR/$n.jsonl"; done
+  [ -f "$file" ] && cat "$file"
+elif [ -n "${DAILYBRIEF_FAKE_TRANSCRIPT:-}" ]; then
   cat "$DAILYBRIEF_FAKE_TRANSCRIPT"
 fi
 if [ "${DAILYBRIEF_FAKE_HANG:-}" = "1" ]; then
