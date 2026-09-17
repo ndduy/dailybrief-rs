@@ -182,11 +182,11 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** The other two strategies per `SPEC.md` §5: `cold_topic` (topics with a vector and `last_positive_at` null or older than 30 days; score = max cosine; exploit top-80 excluded), `popular_unmatched` (exploit score ≤ the 40th percentile, percentile = ascending sort, index `ceil(0.4·n) − 1` clamped; sort source weight desc, published/fetched desc, id asc; `note` on every row), and `search_items` (embed the query, cosine over the window including shown items, limit clamped 1…30).
 
 **Acceptance criteria:**
-- [ ] test: `cold_topic_uses_only_cold_topics`; `cold_topic_excludes_exploit_top_80`; `popular_unmatched_percentile_formula` (table: n = 1, 5, 10 with expected cutoffs); `popular_unmatched_orders_by_source_weight_then_recency_then_id`; `popular_unmatched_carries_note`; `search_items_includes_shown_items`; `search_items_clamps_limit_to_30`.
+- [x] test: `cold_topic_uses_only_cold_topics`; `cold_topic_excludes_exploit_top_80`; `popular_unmatched_percentile_formula` (table: n = 1, 5, 10 with expected cutoffs); `popular_unmatched_orders_by_source_weight_then_recency_then_id`; `popular_unmatched_carries_note`; `search_items_includes_shown_items`; `search_items_clamps_limit_to_30`.
 
 **Verification:**
-- [ ] `cargo test core::candidates`
-- [ ] fast checks clean
+- [x] `cargo test core::candidates`
+- [x] fast checks clean
 
 **Dependencies:** Task 9
 **Files likely touched:** `src/core/candidates.rs`
