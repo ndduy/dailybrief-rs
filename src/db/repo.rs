@@ -346,6 +346,187 @@ pub fn delete_seed_topics_not_in(conn: &Connection, keep: &[&str]) -> Result<usi
     Ok(removed)
 }
 
+// ---------- runs, digests, reads (the parts other modules need now) ----------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunKind {
+    Scheduled,
+    Manual,
+}
+
+impl RunKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Scheduled => "scheduled",
+            Self::Manual => "manual",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewRun {
+    pub id: String,
+    pub kind: RunKind,
+    pub harness: String,
+    pub attempt: i64,
+    pub started_at: String,
+    pub transcript_path: Option<String>,
+}
+
+/// Inserts a run in the `running` state.
+pub fn insert_run(conn: &Connection, run: &NewRun) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO runs (id, kind, harness, status, attempt, started_at, transcript_path)
+         VALUES (?1, ?2, ?3, 'running', ?4, ?5, ?6)",
+        params![
+            run.id,
+            run.kind.as_str(),
+            run.harness,
+            run.attempt,
+            run.started_at,
+            run.transcript_path
+        ],
+    )?;
+    Ok(())
+}
+
+/// Digest sections (`SPEC.md` §5 CHECK constraint).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Section {
+    ForYou,
+    BeyondRadar,
+}
+
+impl Section {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ForYou => "for_you",
+            Self::BeyondRadar => "beyond_radar",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "for_you" => Some(Self::ForYou),
+            "beyond_radar" => Some(Self::BeyondRadar),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestInsert {
+    pub id: String,
+    pub date: String,
+    pub run_id: String,
+    pub published_at: String,
+    pub for_you_count: i64,
+    pub beyond_radar_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestItemInsert {
+    pub item_id: String,
+    pub section: Section,
+    pub position: i64,
+    pub summary: String,
+    pub why_it_matters: String,
+    pub reason: Option<String>,
+    pub topic: String,
+}
+
+/// Writes the digest and its items in one transaction.
+pub fn insert_digest(
+    conn: &Connection,
+    digest: &DigestInsert,
+    items: &[DigestItemInsert],
+) -> Result<(), DbError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO digests (id, date, run_id, published_at, for_you_count, beyond_radar_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            digest.id,
+            digest.date,
+            digest.run_id,
+            digest.published_at,
+            digest.for_you_count,
+            digest.beyond_radar_count
+        ],
+    )?;
+    for it in items {
+        tx.execute(
+            "INSERT INTO digest_items (digest_id, item_id, section, position, summary, why_it_matters, reason, topic)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                digest.id,
+                it.item_id,
+                it.section.as_str(),
+                it.position,
+                it.summary,
+                it.why_it_matters,
+                it.reason,
+                it.topic
+            ],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Every item shown in a digest published at or after `since`.
+pub fn shown_item_ids(
+    conn: &Connection,
+    since: &str,
+) -> Result<std::collections::HashSet<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT di.item_id FROM digest_items di
+         JOIN digests d ON d.id = di.digest_id
+         WHERE d.published_at >= ?1",
+    )?;
+    let ids = stmt
+        .query_map([since], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
+/// A source click (`/r/{id}`).
+pub fn insert_read(
+    conn: &Connection,
+    item_id: &str,
+    digest_id: Option<&str>,
+    at: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO reads (item_id, digest_id, at) VALUES (?1, ?2, ?3)",
+        params![item_id, digest_id, at],
+    )?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadVector {
+    pub item_id: String,
+    pub vector: Vec<f32>,
+}
+
+/// Vectors of the most recently read items (newest first), for the profile.
+pub fn list_read_vectors(conn: &Connection, limit: usize) -> Result<Vec<ReadVector>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.item_id, i.vector FROM reads r JOIN items i ON i.id = r.item_id
+         WHERE i.vector IS NOT NULL ORDER BY r.at DESC, r.id DESC LIMIT ?1",
+    )?;
+    let rows = stmt
+        .query_map([limit as i64], |row| {
+            Ok(ReadVector {
+                item_id: row.get(0)?,
+                vector: decode_vector(row, "vector")?.unwrap_or_default(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

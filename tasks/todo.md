@@ -166,12 +166,12 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `core::profile`: `sync_topics` (upsert each topic from config by id, delete `seed` rows not in the file, embed `name + ". " + description` or `name` alone, store vectors), `profile_vectors` (topics weighted by `weight` × 0.5 when `saturation ≥ 3`; the 200 most recent reads with vectors weighted `0.5 / (1 + log10(rank))`), `exploit_score`. `core::candidates`: the shared pool (window, vector present, not shown) and the `exploit` strategy with `limit` clamped 1…100, snippet = first 200 chars whitespace-collapsed + `…`. Repo additions: `shown_item_ids(since)`, `list_read_vectors(limit)`.
 
 **Acceptance criteria:**
-- [ ] test: `sync_topics_upserts_and_removes_stale_seed_rows`; `sync_topics_embeds_name_and_description`; `profile_weights_apply_saturation_damping`; `read_weight_decays_by_rank` (rank 1 = 0.5, rank 10 = 0.25); `exploit_score_is_zero_for_empty_profile`.
-- [ ] test: `exploit_excludes_shown_items`; `exploit_excludes_items_outside_window` (by `published_at`, and by `fetched_at` when null); `exploit_sorts_by_score_then_id`; `exploit_clamps_limit`; `snippet_cuts_on_chars_not_bytes` (Vietnamese text at the boundary).
+- [x] test: `sync_topics_upserts_and_removes_stale_seed_rows`; `sync_topics_embeds_name_and_description`; `profile_weights_apply_saturation_damping`; `read_weight_decays_by_rank` (rank 1 = 0.5, rank 10 = 0.25); `exploit_score_is_zero_for_empty_profile`.
+- [x] test: `exploit_excludes_shown_items`; `exploit_excludes_items_outside_window` (by `published_at`, and by `fetched_at` when null); `exploit_sorts_by_score_then_id`; `exploit_clamps_limit`; `snippet_cuts_on_chars_not_bytes` (Vietnamese text at the boundary).
 
 **Verification:**
-- [ ] `cargo test core::profile core::candidates`
-- [ ] fast checks clean
+- [x] `cargo test core::profile core::candidates`
+- [x] fast checks clean
 
 **Dependencies:** Task 8
 **Files likely touched:** `src/core/profile.rs`, `src/core/candidates.rs`, `src/db/repo.rs`

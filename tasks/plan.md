@@ -90,7 +90,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Review with human (autonomous run)
 
 ### Phase 2: Select (`core-select`)
-- [ ] Task 9: Topic sync, profile vectors, `exploit`
+- [x] Task 9: Topic sync, profile vectors, `exploit`
 - [ ] Task 10: `cold_topic`, `popular_unmatched`, `search_items`
 - [ ] Task 11: Per-run reads and staging with every `select` rejection
 - [ ] Task 12: Digest validation and publish
