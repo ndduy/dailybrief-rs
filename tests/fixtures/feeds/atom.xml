@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom Feed</title>
+  <link href="https://atom.example/"/>
+  <updated>2026-09-16T10:00:00Z</updated>
+  <id>urn:uuid:example-atom</id>
+  <entry>
+    <title>Type-driven design</title>
+    <link rel="alternate" href="https://atom.example/type-driven"/>
+    <id>urn:uuid:entry-1</id>
+    <updated>2026-09-16T10:00:00Z</updated>
+    <published>2026-09-16T09:00:00Z</published>
+    <author><name>Bình Nguyễn</name></author>
+    <summary>Make illegal states unrepresentable.</summary>
+  </entry>
+  <entry>
+    <title>Only updated, no published</title>
+    <link href="https://atom.example/updated-only"/>
+    <id>urn:uuid:entry-2</id>
+    <updated>2026-09-15T10:00:00Z</updated>
+    <content type="html">&lt;p&gt;Body as content.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <title>Neither date</title>
+    <link href="https://atom.example/no-dates"/>
+    <id>urn:uuid:entry-3</id>
+  </entry>
+</feed>

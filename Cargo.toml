@@ -15,7 +15,12 @@ chrono = "0.4.45"
 chrono-tz = "0.10.4"
 clap = { version = "4.6.7", features = ["derive"] }
 croner = "4.0.0"
+dom_smoothie = "0.18.1"
 fastembed = { version = "7.0.1", default-features = false, features = ["ort-download-binaries-rustls-tls", "hf-hub-rustls-tls"] }
+feed-rs = "2.4.0"
+futures-util = "0.3.34"
+readability = { version = "0.3.0", default-features = false }
+reqwest = { version = "0.13.5", default-features = false, features = ["brotli", "charset", "gzip", "rustls", "stream"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 sha2 = "0.11.0"
@@ -26,3 +31,4 @@ url = "2.5.8"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+wiremock = "0.6.5"

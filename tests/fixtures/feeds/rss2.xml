@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Engineering Blog</title>
+    <link>https://blog.example/</link>
+    <description>Hand-written fixture for fetch tests.</description>
+    <item>
+      <title>Ownership in practice</title>
+      <link>https://blog.example/posts/ownership?utm_source=rss</link>
+      <guid>https://blog.example/posts/ownership</guid>
+      <pubDate>Tue, 15 Sep 2026 08:00:00 GMT</pubDate>
+      <author>ana@example</author>
+      <description>Borrowing rules explained with three examples.</description>
+    </item>
+    <item>
+      <title>Async without the ceremony</title>
+      <link>https://blog.example/posts/async</link>
+      <guid>https://blog.example/posts/async</guid>
+      <pubDate>Mon, 14 Sep 2026 12:30:00 GMT</pubDate>
+      <description><![CDATA[<p>A <b>short</b> tour of tokio tasks.</p>]]></description>
+    </item>
+    <item>
+      <title>No date on this one</title>
+      <link>https://blog.example/posts/undated</link>
+      <guid>https://blog.example/posts/undated</guid>
+      <description>Entry without pubDate.</description>
+    </item>
+    <item>
+      <title>Entry without a link is skipped</title>
+      <guid isPermaLink="false">skip-me</guid>
+      <pubDate>Sun, 13 Sep 2026 12:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <link>https://blog.example/posts/untitled</link>
+      <guid>https://blog.example/posts/untitled</guid>
+      <pubDate>Sat, 12 Sep 2026 12:30:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
