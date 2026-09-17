@@ -131,6 +131,24 @@ impl DailyBriefServer {
         guarded(tools::read_item::run(self, input)).await
     }
 
+    /// Stage an item you have read into for_you or beyond_radar with a summary (≤ 80 words), why it
+    /// matters (≤ 25 words), its topic, and for beyond_radar a reason. section "none" un-stages it.
+    /// Caps: 24 for_you, 6 beyond_radar, 4 per source, 8 per topic; nothing shown in the last 14 days.
+    #[tool]
+    async fn select(
+        &self,
+        Parameters(input): Parameters<tools::select::SelectToolInput>,
+    ) -> CallToolResult {
+        guarded(tools::select::run(self, input)).await
+    }
+
+    /// Validate the staged set end to end and publish it as today's digest. Returns the digest id,
+    /// or the list of violations to fix. After three rejections the run is over.
+    #[tool]
+    async fn publish_digest(&self) -> CallToolResult {
+        guarded(tools::publish_digest::run(self)).await
+    }
+
     /// Read or replace your notes: one text of at most 2000 characters that survives across runs.
     /// Use it for what you learned about sources and topics.
     #[tool]
@@ -293,9 +311,11 @@ mod tests {
                 "fetch_sources",
                 "get_briefing",
                 "list_candidates",
+                "publish_digest",
                 "read_item",
                 "report_feed_issue",
-                "search_items"
+                "search_items",
+                "select"
             ]
         );
         let tools = h.client.list_all_tools().await.unwrap();

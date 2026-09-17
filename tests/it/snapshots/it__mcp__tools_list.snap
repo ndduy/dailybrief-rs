@@ -1,0 +1,249 @@
+---
+source: tests/it/mcp.rs
+expression: listing
+---
+[
+  {
+    "description": "Read or replace your notes: one text of at most 2000 characters that survives across runs.\nUse it for what you learned about sources and topics.",
+    "inputSchema": {
+      "$defs": {
+        "NotesOp": {
+          "enum": [
+            "read",
+            "replace"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "$ref": "#/$defs/NotesOp",
+          "description": "read | replace"
+        },
+        "text": {
+          "default": null,
+          "description": "The full new text for replace (at most 2000 characters); ignored for read.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "name": "editor_notes"
+  },
+  {
+    "description": "Pull every enabled feed now (conditional GET), extract new articles, dedupe and embed them.\nReturns counts per feed. Calling it again in the same run returns the first report.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "fetch_sources"
+  },
+  {
+    "description": "Fetch today's dynamic context in one call: the date, your topic profile (names and weights),\nthe item ids shown in the last 14 days, feed health, your notes, and every cap. Call this first.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "get_briefing"
+  },
+  {
+    "description": "Rank the last 7 days of unseen items. exploit = closest to your profile; cold_topic = nearest to\ntopics with no recent positive signal; popular_unmatched = low profile match, ordered by source\nweight then recency. Returns id, score, title, source, published, snippet.",
+    "inputSchema": {
+      "$defs": {
+        "Strategy": {
+          "enum": [
+            "exploit",
+            "cold_topic",
+            "popular_unmatched"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 30,
+          "description": "How many to return, 1–100 (default 30).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "strategy": {
+          "$ref": "#/$defs/Strategy",
+          "description": "exploit (closest to your profile) | cold_topic (topics with no recent signal) |\npopular_unmatched (low profile match, ordered by source weight then recency)"
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "type": "object"
+    },
+    "name": "list_candidates"
+  },
+  {
+    "description": "Validate the staged set end to end and publish it as today's digest. Returns the digest id,\nor the list of violations to fix. After three rejections the run is over.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "publish_digest"
+  },
+  {
+    "description": "Read an item's extracted text (first 5000 characters). You must read an item before you can\nselect it; at most 45 distinct items per run, re-reads are free.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Item id from list_candidates or search_items.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "read_item"
+  },
+  {
+    "description": "Record that a feed is dead, paywalled, junk or a duplicate so the Curator can act on it.\nUse the feed id from get_briefing's feedHealth.",
+    "inputSchema": {
+      "$defs": {
+        "IssueKind": {
+          "enum": [
+            "dead",
+            "paywalled",
+            "junk",
+            "duplicate"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "feedId": {
+          "description": "The feed id from get_briefing's feedHealth list.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/IssueKind",
+          "description": "dead | paywalled | junk | duplicate"
+        },
+        "note": {
+          "default": null,
+          "description": "One line on what you saw (optional).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "feedId",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "name": "report_feed_issue"
+  },
+  {
+    "description": "Embedding search over the last 7 days for a plain-language query (at most 30 results).\nUse it only when an explore slot lacks a candidate.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "description": "How many to return, 1–30 (default 10).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "query": {
+          "description": "What you are looking for, in plain words.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "search_items"
+  },
+  {
+    "description": "Stage an item you have read into for_you or beyond_radar with a summary (≤ 80 words), why it\nmatters (≤ 25 words), its topic, and for beyond_radar a reason. section \"none\" un-stages it.\nCaps: 24 for_you, 6 beyond_radar, 4 per source, 8 per topic; nothing shown in the last 14 days.",
+    "inputSchema": {
+      "$defs": {
+        "SelectSection": {
+          "oneOf": [
+            {
+              "enum": [
+                "for_you",
+                "beyond_radar"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "none",
+              "description": "Drop the staged row for this item.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "itemId": {
+          "description": "The item id you read with read_item.",
+          "type": "string"
+        },
+        "reason": {
+          "default": null,
+          "description": "Required for beyond_radar: new_to_me | adjacent_field | contrarian | deep_dive | emerging",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "section": {
+          "$ref": "#/$defs/SelectSection",
+          "description": "for_you | beyond_radar | none (none un-stages the item)"
+        },
+        "summary": {
+          "default": "",
+          "description": "At most 80 words, in your own words.",
+          "type": "string"
+        },
+        "topic": {
+          "default": "",
+          "description": "One of the topic names from get_briefing.",
+          "type": "string"
+        },
+        "whyItMatters": {
+          "default": "",
+          "description": "At most 25 words: why this matters to the reader today.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "itemId"
+      ],
+      "type": "object"
+    },
+    "name": "select"
+  }
+]

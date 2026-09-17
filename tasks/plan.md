@@ -103,12 +103,12 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Task 13: `ToolError`, server skeleton, `get_briefing`, the `mcp` verb
 - [x] Task 14: `fetch_sources`, `report_feed_issue`, `editor_notes`
 - [x] Task 15: `list_candidates`, `search_items`, `read_item`
-- [ ] Task 16: `select`, `publish_digest`, the fatal counter, the full violation matrix
+- [x] Task 16: `select`, `publish_digest`, the fatal counter, the full violation matrix
 
 ### Checkpoint D
-- [ ] `tools/list` snapshot committed; nine names; input field names camelCase as in `SPEC.md` §4
-- [ ] `mcp` stdout purity test green; `ToolError` messages snapshotted
-- [ ] Review with human
+- [x] `tools/list` snapshot committed; nine names; input field names camelCase as in `SPEC.md` §4
+- [x] `mcp` stdout purity test green; `ToolError` messages snapshotted
+- [x] Review with human (autonomous run)
 
 ### Phase 4: Contract (`editor-contract`)
 - [ ] Task 17: `DigestOutput`, `gen-schemas` bin, prompt byte-stability, `mcp.json` rendering

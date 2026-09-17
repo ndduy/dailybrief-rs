@@ -288,21 +288,21 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `select` (input enum for `section` incl. `none`; `reason` optional; result `{ ok, replaced, staged }`), `publish_digest` (`{ ok: true, digestId, date, forYou, beyondRadar }` or `{ ok: false, violations, fatal? }` with `is_error: true`; `fatal: true` on the third rejection in this process via an `AtomicU8`). The integration test drives the whole nine-tool trajectory through the client.
 
 **Acceptance criteria:**
-- [ ] test: `select_every_rejection_through_mcp` (one sub-case per Task 11 rejection, asserting `isError` and the exact sentence); `publish_third_rejection_is_fatal`; `publish_success_shape`; `full_trajectory_through_mcp` (get_briefing → list_candidates ×3 → read_item ×30 → select ×30 → publish_digest).
-- [ ] test: `tools_list_snapshot` — nine names, sorted, with input schemas, via `insta`.
-- [ ] `ToolError` messages snapshot covers every variant.
+- [x] test: `select_every_rejection_through_mcp` (one sub-case per Task 11 rejection, asserting `isError` and the exact sentence); `publish_third_rejection_is_fatal`; `publish_success_shape`; `full_trajectory_through_mcp` (get_briefing → list_candidates ×3 → read_item ×30 → select ×30 → publish_digest).
+- [x] test: `tools_list_snapshot` — nine names, sorted, with input schemas, via `insta`.
+- [x] `ToolError` messages snapshot covers every variant.
 
 **Verification:**
-- [ ] `cargo test mcp::`
-- [ ] fast checks clean
+- [x] `cargo test mcp::`
+- [x] fast checks clean
 
 **Dependencies:** Task 15
 **Files likely touched:** `src/mcp/server.rs`, `src/mcp/tools/select.rs`, `src/mcp/tools/publish_digest.rs`, `tests/it/mcp.rs`
 **Estimated scope:** Medium
 
 ## Checkpoint D
-- [ ] Nine tools proven; `tools/list` snapshot committed; stdout purity green; `cargo test` green
-- [ ] Review with human before Phase 4
+- [x] Nine tools proven; `tools/list` snapshot committed; stdout purity green; `cargo test` green
+- [x] Review with human before Phase 4 (autonomous run approved 2026-09-17; 145 tests green)
 
 ---
 
