@@ -7,4 +7,5 @@ pub mod commands;
 pub mod config;
 pub mod core;
 pub mod db;
+pub mod editor;
 pub mod mcp;

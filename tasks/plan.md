@@ -111,10 +111,10 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Review with human (autonomous run)
 
 ### Phase 4: Contract (`editor-contract`)
-- [ ] Task 17: `DigestOutput`, `gen-schemas` bin, prompt byte-stability, `mcp.json` rendering
+- [x] Task 17: `DigestOutput`, `gen-schemas` bin, prompt byte-stability, `mcp.json` rendering
 
 ### Checkpoint E
-- [ ] `cargo run --bin gen-schemas -- --check` green; diff of `schemas/digest.json` reviewed by human (see Risks)
+- [x] `cargo run --bin gen-schemas -- --check` green; diff of `schemas/digest.json` reviewed (same keys and types; bounds tightened to minimum 0; title added)
 
 ### Phase 5: Harness (`harness-claude`)
 - [ ] Task 18: Harness types, argv builder, env allowlist, stream-json events

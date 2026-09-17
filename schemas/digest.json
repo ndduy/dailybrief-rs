@@ -1,33 +1,33 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
+  "additionalProperties": false,
   "properties": {
-    "digestId": {
-      "type": "string",
-      "minLength": 1,
-      "description": "The id returned by publish_digest"
+    "beyondRadar": {
+      "description": "Number of beyond_radar items published",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
     },
     "date": {
-      "type": "string",
+      "description": "Digest date, YYYY-MM-DD, as returned by publish_digest",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "Digest date, YYYY-MM-DD, as returned by publish_digest"
+      "type": "string"
+    },
+    "digestId": {
+      "description": "The id returned by publish_digest",
+      "minLength": 1,
+      "type": "string"
     },
     "forYou": {
-      "type": "integer",
-      "minimum": -9007199254740991,
-      "maximum": 9007199254740991,
-      "description": "Number of for_you items published"
-    },
-    "beyondRadar": {
-      "type": "integer",
-      "minimum": -9007199254740991,
-      "maximum": 9007199254740991,
-      "description": "Number of beyond_radar items published"
+      "description": "Number of for_you items published",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
     },
     "notes": {
       "description": "Optional one-line note for the human reader (≤ 300 chars)",
-      "type": "string",
-      "maxLength": 300
+      "maxLength": 300,
+      "type": "string"
     }
   },
   "required": [
@@ -36,5 +36,6 @@
     "forYou",
     "beyondRadar"
   ],
-  "additionalProperties": false
+  "title": "DigestOutput",
+  "type": "object"
 }

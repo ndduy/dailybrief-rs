@@ -3,6 +3,10 @@ name = "dailybrief"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "gen-schemas"
+path = "src/bin/gen_schemas.rs"
+
 [lints.rust]
 unsafe_code = "forbid"
 
