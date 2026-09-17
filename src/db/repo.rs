@@ -721,6 +721,26 @@ pub fn list_digest_items(
     Ok(rows)
 }
 
+// ---------- editor_notes (single row, harness-independent memory) ----------
+
+pub fn get_editor_notes(conn: &Connection) -> Result<String, DbError> {
+    Ok(conn
+        .query_row("SELECT text FROM editor_notes WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .optional()?
+        .unwrap_or_default())
+}
+
+pub fn set_editor_notes(conn: &Connection, text: &str, at: &str) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO editor_notes (id, text, updated_at) VALUES (1, ?1, ?2)
+         ON CONFLICT(id) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at",
+        params![text, at],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

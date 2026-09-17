@@ -2,6 +2,7 @@
 //! `CommandError` into its exit code.
 
 pub mod fetch;
+pub mod mcp;
 pub mod migrate;
 
 use std::path::PathBuf;
@@ -23,6 +24,10 @@ pub enum CommandError {
     Http(#[from] crate::core::http::HttpError),
     #[error("cannot encode output: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("{0}")]
+    Usage(String),
+    #[error("mcp: {0}")]
+    Mcp(String),
 }
 
 /// The SQLite file inside the data directory.

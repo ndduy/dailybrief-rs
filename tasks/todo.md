@@ -238,14 +238,14 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Read docs.rs for rmcp 3.4 and write a spike test first (a server with one tool driven by an rmcp client over `tokio::io::duplex`). Then `mcp::error::ToolError` (variants wrapping `StagingError`, `DigestViolations`, `UnknownFeed`, `NotesTooLong`, `Internal`) with a conversion into a `CallToolResult` that carries `content` text + `structured_content` and `is_error: true`; `mcp::server` with `#[tool_router]` and the `get_briefing` tool (`SPEC.md` §4 shape, topic descriptions never included); `commands::mcp` reading `DAILYBRIEF_RUN_ID`, logging to stderr only, serving stdio.
 
 **Acceptance criteria:**
-- [ ] test: `mcp::tools_list_has_get_briefing_with_camel_case_fields` via the in-process client; `get_briefing_returns_shape` (keys `date, timezone, profile.topics[].name/weight, shownIds, feedHealth, notes, caps`); `get_briefing_omits_topic_descriptions`.
-- [ ] test: `tool_error_becomes_is_error_result_not_protocol_error`; `internal_panic_becomes_one_sentence`.
-- [ ] test: `mcp_stdout_is_json_rpc_only` — spawn `dailybrief mcp` with `RUST_LOG=trace`, send `initialize` + `tools/list`, assert every stdout line parses as JSON-RPC.
-- [ ] Manual: `claude mcp list` is **not** used (it would spend nothing but is not needed); the in-process client is the proof.
+- [x] test: `mcp::tools_list_has_get_briefing_with_camel_case_fields` via the in-process client; `get_briefing_returns_shape` (keys `date, timezone, profile.topics[].name/weight, shownIds, feedHealth, notes, caps`); `get_briefing_omits_topic_descriptions`.
+- [x] test: `tool_error_becomes_is_error_result_not_protocol_error`; `internal_panic_becomes_one_sentence`.
+- [x] test: `mcp_stdout_is_json_rpc_only` — spawn `dailybrief mcp` with `RUST_LOG=trace`, send `initialize` + `tools/list`, assert every stdout line parses as JSON-RPC.
+- [x] Manual: `claude mcp list` is **not** used (it would spend nothing but is not needed); the in-process client is the proof.
 
 **Verification:**
-- [ ] `cargo test mcp::`
-- [ ] fast checks clean
+- [x] `cargo test mcp::`
+- [x] fast checks clean
 
 **Dependencies:** Task 12
 **Files likely touched:** `Cargo.toml` (`rmcp`), `src/mcp/mod.rs`, `src/mcp/error.rs`, `src/mcp/server.rs`, `src/mcp/tools/get_briefing.rs`, `src/commands/mcp.rs`

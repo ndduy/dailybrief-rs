@@ -100,7 +100,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Review with human (autonomous run)
 
 ### Phase 3: MCP (`mcp-editor`)
-- [ ] Task 13: `ToolError`, server skeleton, `get_briefing`, the `mcp` verb
+- [x] Task 13: `ToolError`, server skeleton, `get_briefing`, the `mcp` verb
 - [ ] Task 14: `fetch_sources`, `report_feed_issue`, `editor_notes`
 - [ ] Task 15: `list_candidates`, `search_items`, `read_item`
 - [ ] Task 16: `select`, `publish_digest`, the fatal counter, the full violation matrix
