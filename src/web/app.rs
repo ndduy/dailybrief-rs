@@ -11,6 +11,7 @@ use axum::routing::{get, post};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 
+use super::auth::{SharedVerifier, require_access};
 use super::routes;
 use crate::config::Config;
 use crate::db::Db;
@@ -42,6 +43,8 @@ pub struct AppState {
     pub runner: Option<Arc<ServiceRunner>>,
     /// One manual run in flight per process; the database lock covers other processes.
     pub active: Arc<AtomicBool>,
+    /// `None` is the loopback bypass (`CF_ACCESS_AUD` unset on 127.0.0.1).
+    pub access: SharedVerifier,
 }
 
 impl AppState {
@@ -59,7 +62,13 @@ impl AppState {
             now,
             runner,
             active: Arc::new(AtomicBool::new(false)),
+            access: None,
         }
+    }
+
+    pub fn with_access(mut self, access: SharedVerifier) -> Self {
+        self.access = access;
+        self
     }
 }
 
@@ -72,6 +81,10 @@ pub fn router(state: AppState) -> Router {
         .route("/run/status", get(routes::run::status))
         .route("/runs/{id}/transcript", get(routes::transcript::download))
         .fallback(routes::not_found)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_access,
+        ))
         .layer(middleware::from_fn(security_headers))
         .with_state(state)
 }

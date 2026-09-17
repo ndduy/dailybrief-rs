@@ -13,6 +13,7 @@ use crate::harness::claude_code::EnvError;
 use crate::harness::scheduler::Scheduler;
 use crate::harness::service_runner::{ServiceRunner, ServiceRunnerError, ServiceRunnerOptions};
 use crate::web::app::{AppState, assert_bind_allowed, router};
+use crate::web::auth::{AccessSettings, AccessVerifier};
 
 use super::{CommandError, db_path};
 
@@ -22,6 +23,15 @@ pub async fn run(env: &Env, process_env: &HashMap<String, String>) -> Result<(),
     assert_bind_allowed(&config.service.bind, env.in_container)?;
     let tz = parse_tz(&config.service.timezone)
         .map_err(|e| CommandError::Usage(format!("service.timezone: {e}")))?;
+    let access = AccessSettings::from_env(process_env, &config.service.bind)
+        .map_err(|e| CommandError::Usage(e.to_string()))?
+        .map(|settings| {
+            tracing::info!(issuer = %settings.issuer(), "Cloudflare Access verification on");
+            Arc::new(AccessVerifier::new(settings, None))
+        });
+    if access.is_none() {
+        tracing::warn!("Cloudflare Access verification bypassed: CF_ACCESS_AUD unset on loopback");
+    }
     let db = Db::open(&db_path(&config))?;
     // A forbidden variable is a hard error (it would change billing); a missing token only
     // disables runs, so the pages still serve on a box without credentials.
@@ -85,7 +95,7 @@ pub async fn run(env: &Env, process_env: &HashMap<String, String>) -> Result<(),
         None => None,
     };
 
-    let state = AppState::new(db, config, tz, chrono::Utc::now, runner);
+    let state = AppState::new(db, config, tz, chrono::Utc::now, runner).with_access(access);
     axum::serve(listener, router(state))
         .with_graceful_shutdown(shutdown_signal())
         .await?;

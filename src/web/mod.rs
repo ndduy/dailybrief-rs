@@ -2,5 +2,6 @@
 //! Cloudflare Access as the trust boundary, one digest page and its empty states.
 
 pub mod app;
+pub mod auth;
 pub mod routes;
 pub mod views;

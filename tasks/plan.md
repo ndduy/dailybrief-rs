@@ -130,10 +130,10 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 ### Phase 6: Web (`web-read`)
 - [x] Task 22: App shell, bind guard, security headers, digest pages and states; `serve` verb
 - [x] Task 23: Click redirect, transcript download, `POST /run`, `/run/status`; scheduler wired into `serve`
-- [ ] Task 24: Cloudflare Access JWT middleware
+- [x] Task 24: Cloudflare Access JWT middleware
 
 ### Checkpoint G
-- [ ] `oneshot` tests for every route and status code in `SPEC.md` §7b; 401 without a valid assertion
+- [x] `oneshot` tests for every route and status code in `SPEC.md` §7b; 401 without a valid assertion
 - [ ] Manual: page rendered at phone width in a real browser against a seeded temp DB (screenshot in the task note)
 - [ ] Review with human
 
