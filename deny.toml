@@ -1,0 +1,49 @@
+# cargo-deny (CONSTRAINTS.md "Dependencies"): advisories, the approved licence set, and sources.
+
+[graph]
+all-features = false
+targets = ["x86_64-unknown-linux-gnu"]
+
+[advisories]
+version = 2
+yanked = "deny"
+# Each entry is an exception in CONSTRAINTS.md with an owner and an expiry.
+ignore = [
+    # X3: rsa (via jsonwebtoken's rust_crypto backend) only verifies RS256 signatures with
+    # Cloudflare's public keys; the Marvin side channel concerns private-key operations, which
+    # happen only in tests. No fixed release exists.
+    { id = "RUSTSEC-2023-0071", reason = "public-key verification only; see CONSTRAINTS.md X3" },
+    # X4: paste is a compile-time proc-macro reached through tokenizers <- fastembed; no runtime
+    # code and no vulnerability, only unmaintained.
+    { id = "RUSTSEC-2024-0436", reason = "compile-time macro via tokenizers <- fastembed; see CONSTRAINTS.md X4" },
+]
+
+[licenses]
+version = 2
+# This crate is a personal service, publish = false; it is not licensed for distribution.
+private = { ignore = true }
+# The permissive set approved in the R0 spec interview (spec/r0.md §11 #6).
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "OpenSSL",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1101,6 +1101,15 @@ pub fn latest_digest_for_item(conn: &Connection, item_id: &str) -> Result<Option
         .optional()?)
 }
 
+/// Every item id, oldest fetched first (for `reembed`).
+pub fn list_item_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare("SELECT id FROM items ORDER BY fetched_at, id")?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

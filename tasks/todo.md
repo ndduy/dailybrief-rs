@@ -470,12 +470,12 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `commands::reembed` (every item and topic re-embedded in batches, progress on stderr); `bin/check fast|task|full` per `spec/r0.md` §4 with ADR 0004's two coverage reports; `deny.toml` with the approved licence allowlist and advisories; `[profile.dev.package."*"] opt-level = 2`, `[profile.release] lto = "thin", codegen-units = 1, strip = true`; install `gitleaks` on the box (approved) and run it.
 
 **Acceptance criteria:**
-- [ ] test: `reembed_rewrites_every_vector` (fake embedder, vectors change, count unchanged).
-- [ ] `bin/check fast` ≤ 60 s warm on the host; `bin/check task` ≤ 4 min; `bin/check full` green including both coverage floors and `cargo deny check` and `gitleaks detect --redact --no-banner`.
-- [ ] Wall times recorded in `CONSTRAINTS.md` "Measured".
+- [x] test: `reembed_rewrites_every_vector` (fake embedder, vectors change, count unchanged).
+- [x] `bin/check fast` ≤ 60 s warm on the host; `bin/check task` ≤ 4 min; `bin/check full` green including both coverage floors and `cargo deny check` and `gitleaks detect --redact --no-banner`.
+- [x] Wall times recorded in `CONSTRAINTS.md` "Measured".
 
 **Verification:**
-- [ ] `time bin/check fast`; `time bin/check task`; `bin/check full`
+- [x] `time bin/check fast`; `time bin/check task`; `bin/check full`
 
 **Dependencies:** Task 24
 **Files likely touched:** `Cargo.toml`, `src/commands/reembed.rs`, `bin/check`, `deny.toml`, `CONSTRAINTS.md`

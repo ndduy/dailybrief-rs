@@ -45,6 +45,8 @@ enum Command {
     },
     /// Serve the reading pages (and the scheduler) on service.bind:service.port.
     Serve,
+    /// Re-embed every item and topic with the current model (first deployment).
+    Reembed,
     /// Egress scan of a run transcript; exit 1 on any finding.
     ScanTranscript {
         /// Path to transcript.jsonl
@@ -107,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
             .await?;
             std::process::exit(code);
         }
+        Command::Reembed => commands::reembed::run(&env, &mut std::io::stdout()).await?,
         Command::Serve => {
             let process_env: std::collections::HashMap<String, String> = std::env::vars().collect();
             commands::serve::run(&env, &process_env).await?;

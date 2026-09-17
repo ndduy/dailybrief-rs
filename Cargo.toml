@@ -3,6 +3,7 @@ name = "dailybrief"
 version = "0.1.0"
 edition = "2024"
 default-run = "dailybrief"
+publish = false
 
 [[bin]]
 name = "gen-schemas"
@@ -54,3 +55,13 @@ rsa = "0.9.10"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
 wiremock = "0.6.5"
+
+# Dependencies (ONNX, HTML parsing, crypto) optimised even in dev so tests stay quick;
+# the release binary is thin-LTO, single codegen unit, stripped (spec/r0.md, Task 25).
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

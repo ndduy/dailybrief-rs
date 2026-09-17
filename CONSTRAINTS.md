@@ -29,7 +29,7 @@ Read this before writing code. Do not weaken it to make a change pass. Canonical
 | Compile | zero warnings | `cargo build --all-targets` with `RUSTFLAGS="-D warnings"` (`bin/check fast`) | every edit | a warning today is a bug in a month |
 | Lint / format | clippy clean at `-D warnings`; `cargo fmt --check` clean | `cargo clippy --all-targets -- -D warnings && cargo fmt --check` (`bin/check fast`) | every edit | one style, no review noise; `clippy::pedantic` advisory at `/review` |
 | Tests | all pass; no `#[ignore]` without a reason | `cargo test` (`bin/check task`) | task end, CI | toolkit rule: every task ships with tests |
-| Coverage: core contracts | `core::`, `mcp::`, `db::`, `harness::` lines ≥ 80 % | `cargo llvm-cov` with the mechanism decided in ADR 0004 (`bin/check full`) | task end, CI | the agent depends on these invariants being real |
+| Coverage: core contracts | `core::`, `mcp::`, `db::`, `harness::`, `editor::` lines ≥ 80 % | `cargo llvm-cov` with the mechanism decided in ADR 0004 (`bin/check full`) | task end, CI | the agent depends on these invariants being real |
 | Coverage: rest | `web::`, `config::`, `commands::` lines ≥ 60 % | same | task end, CI | views and wiring; integration tests cover the paths that matter |
 | Generated schema | `schemas/digest.json` equals `editor::DigestOutput`'s schema, compared as parsed JSON | `cargo run --bin gen-schemas -- --check` (`bin/check task`) | task end, CI | the harness validates against the committed file |
 | Dependencies | no advisories; licences only MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, MPL-2.0; no duplicate major versions of the same crate without a `deny.toml` reason | `cargo deny check` (`bin/check full`) | CI | supply-chain and licence hygiene |
@@ -45,8 +45,10 @@ Read this before writing code. Do not weaken it to make a change pass. Canonical
 
 | Metric | Today | Direction |
 |---|---|---|
-| Project line coverage | n/a (no code yet) — record after the first `/ship` | must not fall |
-| `bin/check task` wall time | n/a | must stay ≤ 4 min |
+| Line coverage per group | core group (`core`, `mcp`, `db`, `harness`, `editor`) 95.4 %; rest group (`web`, `config`, `commands`) 78.8 % (2026-09-17, Task 25) | must not fall |
+| `bin/check fast` wall time | 0.8 s warm on the box (2026-09-17, host cargo, Task 25) | must stay ≤ 60 s |
+| `bin/check task` wall time | 19 s on the box (2026-09-17, host cargo, Task 25) | must stay ≤ 4 min |
+| `bin/check full` wall time | 19 s warm on the box (2026-09-17, Task 25) | must stay ≤ 4 min |
 | Cold `cargo build --release` in the builder stage | n/a — record at the `ops` task | informs the workspace-split decision (`SPEC.md` §7: split only past ~20 s incremental) |
 | Editor run turns / reads / wall time (from `runs`) | n/a until the smoke run | recorded per run; M7 turns it into an eval |
 
@@ -56,3 +58,5 @@ Read this before writing code. Do not weaken it to make a change pass. Canonical
 |---|---|---|---|---|---|
 | X1 | Every check in the `test` container | whole repo | the Docker image lands in the `ops` module; host `cargo` 1.98.1 is acceptable for the slices before it | Duy | first R0 `/ship` |
 | X2 | Coverage on the real-model embed path | `src/core/embed.rs` | exercised only by the opt-in `EMBED_REAL=1` test; the fake `Embedder` covers the call sites | Duy | M2 ship |
+| X3 | No advisories (`RUSTSEC-2023-0071`, `rsa` Marvin timing attack) | `deny.toml` ignore | `rsa` arrives through `jsonwebtoken`'s pure-Rust backend and is used only to **verify** RS256 signatures with Cloudflare's public keys; the Marvin side channel concerns private-key operations, which happen only in tests (a key generated per run). No fixed `rsa` release exists. Revisit when `rsa` 0.10 ships or if the `aws_lc_rs` backend becomes acceptable in the image | Duy | 2026-12-17 |
+| X4 | No advisories (`RUSTSEC-2024-0436`, `paste` unmaintained) | `deny.toml` ignore | a compile-time proc-macro reached through `tokenizers` ← `fastembed`; no runtime code, no known vulnerability. Revisit when the upstream dependency drops it | Duy | 2026-12-17 |

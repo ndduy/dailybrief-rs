@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# The quality bar, runnable in one word (CONSTRAINTS.md, spec/r0.md §4):
+#   bin/check fast   build (-D warnings) + clippy + fmt                      ≤ 60 s warm
+#   bin/check task   fast + tests + gen-schemas --check                       ≤ 4 min
+#   bin/check full   task + coverage floors (ADR 0004) + cargo deny + gitleaks
+# Inside the test container this is `bin/dc bin/check <mode>`.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mode="${1:-fast}"
+started=$(date +%s)
+
+step() { printf '\n== %s ==\n' "$1"; }
+
+fast() {
+  step "build --all-targets (-D warnings)"
+  RUSTFLAGS="-D warnings" cargo build --all-targets
+  step "clippy -D warnings"
+  cargo clippy --all-targets -- -D warnings
+  step "fmt --check"
+  cargo fmt --check
+}
+
+task() {
+  fast
+  step "test"
+  cargo test
+  step "gen-schemas --check"
+  cargo run -q --bin gen-schemas -- --check
+}
+
+full() {
+  task
+  step "coverage (one run, two floors — ADR 0004)"
+  cargo llvm-cov clean --workspace
+  cargo llvm-cov test --no-report
+  cargo llvm-cov report --fail-under-lines 80 \
+    --ignore-filename-regex '/src/(web|config|commands)/|/src/main\.rs|/src/bin/'
+  cargo llvm-cov report --fail-under-lines 60 \
+    --ignore-filename-regex '/src/(core|mcp|db|harness|editor)/|/src/main\.rs|/src/bin/'
+  cargo llvm-cov report --json --output-path target/coverage.json
+  # Every src/<module>/ must fall under exactly one floor (ADR 0004).
+  for m in $(find src -mindepth 1 -maxdepth 1 -type d -printf '%f\n'); do
+    case "$m" in
+      web|config|commands|core|mcp|db|harness|editor|bin) ;;
+      *) echo "src/$m/ is not assigned to a coverage floor (edit bin/check and ADR 0004)"; exit 1 ;;
+    esac
+  done
+  step "cargo deny check"
+  cargo deny check
+  step "gitleaks detect"
+  gitleaks detect --redact --no-banner
+}
+
+case "$mode" in
+  fast) fast ;;
+  task) task ;;
+  full) full ;;
+  *) echo "usage: bin/check [fast|task|full]" >&2; exit 2 ;;
+esac
+
+printf '\n== %s: ok in %ss ==\n' "$mode" "$(( $(date +%s) - started ))"
