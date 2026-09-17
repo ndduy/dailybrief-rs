@@ -93,11 +93,11 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Task 9: Topic sync, profile vectors, `exploit`
 - [x] Task 10: `cold_topic`, `popular_unmatched`, `search_items`
 - [x] Task 11: Per-run reads and staging with every `select` rejection
-- [ ] Task 12: Digest validation and publish
+- [x] Task 12: Digest validation and publish
 
 ### Checkpoint C
-- [ ] Scenario test: fixtures → `exploit` → `read_item` ×30 → `select` ×30 → `publish` → `digests` + `digest_items`; every §4 violation has a failing case
-- [ ] Review with human
+- [x] Scenario test: fixtures → `exploit` → `read_item` ×30 → `select` ×30 → `publish` → `digests` + `digest_items`; every §4 violation has a failing case
+- [x] Review with human (autonomous run)
 
 ### Phase 3: MCP (`mcp-editor`)
 - [ ] Task 13: `ToolError`, server skeleton, `get_briefing`, the `mcp` verb

@@ -621,6 +621,106 @@ pub fn list_selections(conn: &Connection, run_id: &str) -> Result<Vec<Selection>
     Ok(rows)
 }
 
+// ---------- digests: reading back ----------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestRow {
+    pub id: String,
+    pub date: String,
+    pub run_id: String,
+    pub published_at: String,
+    pub for_you_count: i64,
+    pub beyond_radar_count: i64,
+}
+
+fn map_digest(row: &Row<'_>) -> rusqlite::Result<DigestRow> {
+    Ok(DigestRow {
+        id: row.get("id")?,
+        date: row.get("date")?,
+        run_id: row.get("run_id")?,
+        published_at: row.get("published_at")?,
+        for_you_count: row.get("for_you_count")?,
+        beyond_radar_count: row.get("beyond_radar_count")?,
+    })
+}
+
+const DIGEST_COLS: &str = "id, date, run_id, published_at, for_you_count, beyond_radar_count";
+
+pub fn get_digest_by_run(conn: &Connection, run_id: &str) -> Result<Option<DigestRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {DIGEST_COLS} FROM digests WHERE run_id = ?1 ORDER BY published_at DESC LIMIT 1"),
+            [run_id],
+            map_digest,
+        )
+        .optional()?)
+}
+
+pub fn get_digest(conn: &Connection, id: &str) -> Result<Option<DigestRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {DIGEST_COLS} FROM digests WHERE id = ?1"),
+            [id],
+            map_digest,
+        )
+        .optional()?)
+}
+
+/// The latest digest published for a local date.
+pub fn latest_digest_for_date(conn: &Connection, date: &str) -> Result<Option<DigestRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {DIGEST_COLS} FROM digests WHERE date = ?1 ORDER BY published_at DESC LIMIT 1"),
+            [date],
+            map_digest,
+        )
+        .optional()?)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestItemRow {
+    pub item_id: String,
+    pub section: Section,
+    pub position: i64,
+    pub summary: String,
+    pub why_it_matters: String,
+    pub reason: Option<String>,
+    pub topic: String,
+}
+
+/// A digest's items by section then position.
+pub fn list_digest_items(
+    conn: &Connection,
+    digest_id: &str,
+) -> Result<Vec<DigestItemRow>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT item_id, section, position, summary, why_it_matters, reason, topic
+         FROM digest_items WHERE digest_id = ?1 ORDER BY section, position",
+    )?;
+    let rows = stmt
+        .query_map([digest_id], |row| {
+            let section: String = row.get("section")?;
+            let section = Section::parse(&section).ok_or_else(|| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    format!("unknown section '{section}'").into(),
+                )
+            })?;
+            Ok(DigestItemRow {
+                item_id: row.get("item_id")?,
+                section,
+                position: row.get("position")?,
+                summary: row.get("summary")?,
+                why_it_matters: row.get("why_it_matters")?,
+                reason: row.get("reason")?,
+                topic: row.get("topic")?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

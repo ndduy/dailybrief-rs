@@ -214,20 +214,20 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `core::digest`: `validate_staged` returning every violation sentence from `SPEC.md` §4 (`publish_digest`), and `publish` (already-published check; `digest_id = <local date>-<run id>`; `digests` + `digest_items` in one transaction with positions renumbered 1… per section in staged order). Repo additions: `digests`, `digest_items`, `get_digest_by_run`, `insert_digest`.
 
 **Acceptance criteria:**
-- [ ] test: `publish_rejects_wrong_counts` (23 + 6, 24 + 7), `_unread_staged_item`, `_shown_item`, `_beyond_radar_without_reason`, `_source_over_cap`, `_topic_over_cap`, `_already_published`; `publish_writes_atomically_and_renumbers_positions`; `publish_id_uses_local_date` (a run at 23:30 UTC gets the next day's date in Ho Chi Minh).
-- [ ] test (scenario, Checkpoint C): `full_run_in_process` — fixtures → `exploit` → 30 reads → 30 selects → publish → 30 `digest_items`.
+- [x] test: `publish_rejects_wrong_counts` (23 + 6, 24 + 7), `_unread_staged_item`, `_shown_item`, `_beyond_radar_without_reason`, `_source_over_cap`, `_topic_over_cap`, `_already_published`; `publish_writes_atomically_and_renumbers_positions`; `publish_id_uses_local_date` (a run at 23:30 UTC gets the next day's date in Ho Chi Minh).
+- [x] test (scenario, Checkpoint C): `full_run_in_process` — fixtures → `exploit` → 30 reads → 30 selects → publish → 30 `digest_items`.
 
 **Verification:**
-- [ ] `cargo test core::digest`
-- [ ] fast checks clean
+- [x] `cargo test core::digest`
+- [x] fast checks clean
 
 **Dependencies:** Task 11
 **Files likely touched:** `src/core/digest.rs`, `src/db/repo.rs`, `tests/it/main.rs`, `tests/it/scenario.rs`
 **Estimated scope:** Medium
 
 ## Checkpoint C
-- [ ] `full_run_in_process` green; every §4 violation has a failing case; `cargo test` green
-- [ ] Review with human before Phase 3
+- [x] `full_run_in_process` green; every §4 violation has a failing case; `cargo test` green
+- [x] Review with human before Phase 3 (autonomous run approved 2026-09-17; 125 tests green)
 
 ---
 

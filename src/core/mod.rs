@@ -2,6 +2,7 @@
 
 pub mod candidates;
 pub mod dedupe;
+pub mod digest;
 pub mod embed;
 pub mod extract;
 pub mod fetch;
