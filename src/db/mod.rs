@@ -4,6 +4,7 @@
 
 mod migrate;
 pub mod migrations;
+pub mod repo;
 
 pub use migrate::{applied_migrations, migrate};
 

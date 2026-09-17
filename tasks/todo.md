@@ -47,23 +47,23 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `core::vector` (384-d little-endian `f32` blob ↔ `Vec<f32>` via `chunks_exact(4)` / `to_le_bytes`, cosine), `core::time` (RFC 3339 UTC millis `Z` formatting, `days_ago`, local date in a zone), and the first third of `db::repo`: upsert/get/list for `sources`, `items`, `topics`, source health updates, `has_canonical_url`, `has_title_hash`, `list_items_since`, `set_topic_vector`, `delete_seed_topics_not_in`.
 
 **Acceptance criteria:**
-- [ ] test: `core::vector::roundtrip_le_bytes`; `rejects_odd_length_blob`; `rejects_wrong_dimension`; `cosine_of_identical_is_one`, `cosine_of_orthogonal_is_zero`.
-- [ ] test: `core::time::formats_millis_z` (`2026-09-17T06:30:00.000Z`), `local_date_in_ho_chi_minh_crosses_midnight_utc`.
-- [ ] test: one repo test per function against `Db::open_in_memory()`, including `item_vector_null_when_absent` and `upsert_item_conflicts_on_canonical_url`.
-- [ ] test: `repo_is_the_only_sql_site` greps `src/` for `rusqlite::` outside `src/db/` and finds nothing.
+- [x] test: `core::vector::roundtrip_le_bytes`; `rejects_odd_length_blob`; `rejects_wrong_dimension`; `cosine_of_identical_is_one`, `cosine_of_orthogonal_is_zero`.
+- [x] test: `core::time::formats_millis_z` (`2026-09-17T06:30:00.000Z`), `local_date_in_ho_chi_minh_crosses_midnight_utc`.
+- [x] test: one repo test per function against `Db::open_in_memory()`, including `item_vector_null_when_absent` and `upsert_item_conflicts_on_canonical_url`.
+- [x] test: `repo_is_the_only_sql_site` greps `src/` for `rusqlite::` outside `src/db/` and finds nothing.
 
 **Verification:**
-- [ ] `cargo test core::vector core::time db::repo`
-- [ ] fast checks clean
+- [x] `cargo test core::vector core::time db::repo`
+- [x] fast checks clean
 
 **Dependencies:** Task 2
 **Files likely touched:** `src/core/mod.rs`, `src/core/vector.rs`, `src/core/time.rs`, `src/db/repo.rs`
 **Estimated scope:** Medium
 
 ## Checkpoint A
-- [ ] `cargo test` green; clippy `-D warnings` clean; `cargo fmt --check` clean
-- [ ] `dailybrief migrate` on a temp path creates the schema; second run applies nothing
-- [ ] Review with human before Phase 1
+- [x] `cargo test` green; clippy `-D warnings` clean; `cargo fmt --check` clean
+- [x] `dailybrief migrate` on a temp path creates the schema; second run applies nothing
+- [x] Review with human before Phase 1
 
 ---
 

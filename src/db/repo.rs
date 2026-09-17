@@ -1,0 +1,592 @@
+//! Every SQL statement in the crate. Functions are synchronous over `&Connection` and are composed
+//! inside one `Db::call` closure by callers (ADR 0002). Row types mirror `SPEC.md` §5 columns.
+
+use rusqlite::{Connection, OptionalExtension, Row, params};
+
+use crate::config::{Feed, Topic, TopicOrigin};
+use crate::core::vector;
+
+use super::DbError;
+
+// ---------- sources ----------
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Source {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub weight: f64,
+    pub enabled: bool,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+    pub failures: i64,
+    pub last_ok_at: Option<String>,
+    pub last_error: Option<String>,
+}
+
+fn map_source(row: &Row<'_>) -> rusqlite::Result<Source> {
+    Ok(Source {
+        id: row.get("id")?,
+        url: row.get("url")?,
+        title: row.get("title")?,
+        weight: row.get("weight")?,
+        enabled: row.get::<_, i64>("enabled")? != 0,
+        etag: row.get("etag")?,
+        last_modified: row.get("last_modified")?,
+        failures: row.get("failures")?,
+        last_ok_at: row.get("last_ok_at")?,
+        last_error: row.get("last_error")?,
+    })
+}
+
+const SOURCE_COLS: &str =
+    "id, url, title, weight, enabled, etag, last_modified, failures, last_ok_at, last_error";
+
+/// Mirrors a `feeds.toml` entry: inserts, or updates url/title/weight/enabled while keeping the
+/// fetch state (etag, last_modified, failures, last_ok_at, last_error).
+pub fn upsert_source(conn: &Connection, feed: &Feed) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO sources (id, url, title, weight, enabled) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET url = excluded.url, title = excluded.title,
+             weight = excluded.weight, enabled = excluded.enabled",
+        params![
+            feed.id,
+            feed.url,
+            feed.title,
+            feed.weight,
+            i64::from(feed.enabled)
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_source(conn: &Connection, id: &str) -> Result<Option<Source>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {SOURCE_COLS} FROM sources WHERE id = ?1"),
+            [id],
+            map_source,
+        )
+        .optional()?)
+}
+
+pub fn list_sources(conn: &Connection) -> Result<Vec<Source>, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT {SOURCE_COLS} FROM sources ORDER BY id"))?;
+    let rows = stmt
+        .query_map([], map_source)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// A successful fetch: stores the validators, resets failures, clears the last error.
+pub fn mark_source_ok(
+    conn: &Connection,
+    id: &str,
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+    at: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE sources SET etag = ?2, last_modified = ?3, failures = 0, last_ok_at = ?4, last_error = NULL
+         WHERE id = ?1",
+        params![id, etag, last_modified, at],
+    )?;
+    Ok(())
+}
+
+/// A failed fetch: increments failures and records the error.
+pub fn mark_source_failed(conn: &Connection, id: &str, error: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE sources SET failures = failures + 1, last_error = ?2 WHERE id = ?1",
+        params![id, error],
+    )?;
+    Ok(())
+}
+
+// ---------- items ----------
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Item {
+    pub id: String,
+    pub source_id: String,
+    pub url: String,
+    pub canonical_url: String,
+    pub title: String,
+    pub author: Option<String>,
+    pub published_at: Option<String>,
+    pub fetched_at: String,
+    pub text: String,
+    pub word_count: i64,
+    pub content_hash: String,
+    pub title_hash: String,
+    pub vector: Option<Vec<f32>>,
+    pub social_score: Option<f64>,
+}
+
+impl Item {
+    /// `published_at`, falling back to `fetched_at` — the ordering key for candidates.
+    pub fn published_or_fetched(&self) -> &str {
+        self.published_at.as_deref().unwrap_or(&self.fetched_at)
+    }
+}
+
+/// Everything needed to insert an item; `id` is chosen by the caller (`core::dedupe::item_id`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewItem {
+    pub id: String,
+    pub source_id: String,
+    pub url: String,
+    pub canonical_url: String,
+    pub title: String,
+    pub author: Option<String>,
+    pub published_at: Option<String>,
+    pub fetched_at: String,
+    pub text: String,
+    pub word_count: i64,
+    pub content_hash: String,
+    pub title_hash: String,
+    pub vector: Option<Vec<f32>>,
+}
+
+const ITEM_COLS: &str = "id, source_id, url, canonical_url, title, author, published_at, fetched_at, \
+                         text, word_count, content_hash, title_hash, vector, social_score";
+
+fn decode_vector(row: &Row<'_>, col: &str) -> rusqlite::Result<Option<Vec<f32>>> {
+    let blob: Option<Vec<u8>> = row.get(col)?;
+    blob.map(|b| {
+        vector::from_blob(&b).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Blob, Box::new(e))
+        })
+    })
+    .transpose()
+}
+
+fn map_item(row: &Row<'_>) -> rusqlite::Result<Item> {
+    Ok(Item {
+        id: row.get("id")?,
+        source_id: row.get("source_id")?,
+        url: row.get("url")?,
+        canonical_url: row.get("canonical_url")?,
+        title: row.get("title")?,
+        author: row.get("author")?,
+        published_at: row.get("published_at")?,
+        fetched_at: row.get("fetched_at")?,
+        text: row.get("text")?,
+        word_count: row.get("word_count")?,
+        content_hash: row.get("content_hash")?,
+        title_hash: row.get("title_hash")?,
+        vector: decode_vector(row, "vector")?,
+        social_score: row.get("social_score")?,
+    })
+}
+
+/// Inserts one item. A duplicate `id` or `canonical_url` is a constraint error, by design.
+pub fn insert_item(conn: &Connection, item: &NewItem) -> Result<(), DbError> {
+    conn.execute(
+        &format!(
+            "INSERT INTO items ({ITEM_COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, NULL)"
+        ),
+        params![
+            item.id,
+            item.source_id,
+            item.url,
+            item.canonical_url,
+            item.title,
+            item.author,
+            item.published_at,
+            item.fetched_at,
+            item.text,
+            item.word_count,
+            item.content_hash,
+            item.title_hash,
+            item.vector.as_deref().map(vector::to_blob),
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_item(conn: &Connection, id: &str) -> Result<Option<Item>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {ITEM_COLS} FROM items WHERE id = ?1"),
+            [id],
+            map_item,
+        )
+        .optional()?)
+}
+
+pub fn has_canonical_url(conn: &Connection, canonical_url: &str) -> Result<bool, DbError> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM items WHERE canonical_url = ?1",
+            [canonical_url],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+pub fn has_title_hash(conn: &Connection, title_hash: &str) -> Result<bool, DbError> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM items WHERE title_hash = ?1",
+            [title_hash],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+/// Items fetched at or after `since` (stored-form timestamp), newest first, then id.
+pub fn list_items_since(conn: &Connection, since: &str) -> Result<Vec<Item>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ITEM_COLS} FROM items WHERE fetched_at >= ?1 ORDER BY fetched_at DESC, id ASC"
+    ))?;
+    let rows = stmt
+        .query_map([since], map_item)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn set_item_vector(conn: &Connection, id: &str, v: &[f32]) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE items SET vector = ?2 WHERE id = ?1",
+        params![id, vector::to_blob(v)],
+    )?;
+    Ok(())
+}
+
+// ---------- topics ----------
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopicRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub weight: f64,
+    pub vector: Option<Vec<f32>>,
+    pub origin: TopicOrigin,
+    pub last_positive_at: Option<String>,
+    pub saturation: i64,
+}
+
+const TOPIC_COLS: &str =
+    "id, name, description, weight, vector, origin, last_positive_at, saturation";
+
+fn map_topic(row: &Row<'_>) -> rusqlite::Result<TopicRow> {
+    let origin: String = row.get("origin")?;
+    let origin = match origin.as_str() {
+        "seed" => TopicOrigin::Seed,
+        "curator" => TopicOrigin::Curator,
+        "explore-promoted" => TopicOrigin::ExplorePromoted,
+        other => {
+            return Err(rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                format!("unknown topic origin '{other}'").into(),
+            ));
+        }
+    };
+    Ok(TopicRow {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        description: row.get("description")?,
+        weight: row.get("weight")?,
+        vector: decode_vector(row, "vector")?,
+        origin,
+        last_positive_at: row.get("last_positive_at")?,
+        saturation: row.get("saturation")?,
+    })
+}
+
+/// Mirrors a `topics.toml` entry: inserts, or updates name/description/weight/origin while keeping
+/// the learned state (vector, last_positive_at, saturation).
+pub fn upsert_topic(conn: &Connection, topic: &Topic) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO topics (id, name, description, weight, origin) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description,
+             weight = excluded.weight, origin = excluded.origin",
+        params![
+            topic.id,
+            topic.name,
+            topic.description,
+            topic.weight,
+            topic.origin.as_str()
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn list_topics(conn: &Connection) -> Result<Vec<TopicRow>, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT {TOPIC_COLS} FROM topics ORDER BY id"))?;
+    let rows = stmt
+        .query_map([], map_topic)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn set_topic_vector(conn: &Connection, id: &str, v: &[f32]) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE topics SET vector = ?2 WHERE id = ?1",
+        params![id, vector::to_blob(v)],
+    )?;
+    Ok(())
+}
+
+/// Removes `seed` topics that are no longer in `topics.toml`; curator-made topics are kept.
+pub fn delete_seed_topics_not_in(conn: &Connection, keep: &[&str]) -> Result<usize, DbError> {
+    let mut stmt = conn.prepare("SELECT id FROM topics WHERE origin = 'seed'")?;
+    let seeded = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut removed = 0;
+    for id in seeded.iter().filter(|id| !keep.contains(&id.as_str())) {
+        removed += conn.execute("DELETE FROM topics WHERE id = ?1", [id])?;
+    }
+    Ok(removed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Db;
+
+    fn feed(id: &str) -> Feed {
+        Feed {
+            id: id.to_string(),
+            url: format!("https://{id}.example/rss"),
+            title: id.to_uppercase(),
+            weight: 1.0,
+            enabled: true,
+        }
+    }
+
+    fn new_item(id: &str, source_id: &str, canonical: &str) -> NewItem {
+        NewItem {
+            id: id.to_string(),
+            source_id: source_id.to_string(),
+            url: format!("{canonical}?utm_source=x"),
+            canonical_url: canonical.to_string(),
+            title: format!("Title {id}"),
+            author: None,
+            published_at: Some("2026-09-16T00:00:00.000Z".to_string()),
+            fetched_at: "2026-09-17T00:00:00.000Z".to_string(),
+            text: "Xin chào thế giới".to_string(),
+            word_count: 4,
+            content_hash: format!("c{id}"),
+            title_hash: format!("t{id}"),
+            vector: None,
+        }
+    }
+
+    fn topic(id: &str) -> Topic {
+        Topic {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: String::new(),
+            weight: 1.0,
+            origin: TopicOrigin::Seed,
+        }
+    }
+
+    fn db() -> Db {
+        Db::open_in_memory().unwrap()
+    }
+
+    #[test]
+    fn upsert_source_keeps_fetch_state_and_updates_config_fields() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            mark_source_ok(
+                c,
+                "a",
+                Some("W/\"e1\""),
+                Some("Wed"),
+                "2026-09-17T00:00:00.000Z",
+            )?;
+            let mut changed = feed("a");
+            changed.title = "New".into();
+            changed.weight = 2.5;
+            changed.enabled = false;
+            upsert_source(c, &changed)?;
+            let s = get_source(c, "a")?.unwrap();
+            assert_eq!(s.title, "New");
+            assert_eq!(s.weight, 2.5);
+            assert!(!s.enabled);
+            assert_eq!(s.etag.as_deref(), Some("W/\"e1\""));
+            assert_eq!(s.last_ok_at.as_deref(), Some("2026-09-17T00:00:00.000Z"));
+            assert_eq!(list_sources(c)?.len(), 1);
+            assert!(get_source(c, "nope")?.is_none());
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn source_failures_count_and_reset() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            mark_source_failed(c, "a", "timeout")?;
+            mark_source_failed(c, "a", "500")?;
+            let s = get_source(c, "a")?.unwrap();
+            assert_eq!(s.failures, 2);
+            assert_eq!(s.last_error.as_deref(), Some("500"));
+            mark_source_ok(c, "a", None, None, "2026-09-17T00:00:00.000Z")?;
+            let s = get_source(c, "a")?.unwrap();
+            assert_eq!(s.failures, 0);
+            assert!(s.last_error.is_none());
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn item_roundtrip_with_and_without_vector() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            let mut with = new_item("i1", "a", "https://a.example/1");
+            with.vector = Some((0..vector::DIMENSIONS).map(|i| i as f32).collect());
+            insert_item(c, &with)?;
+            insert_item(c, &new_item("i2", "a", "https://a.example/2"))?;
+            let got = get_item(c, "i1")?.unwrap();
+            assert_eq!(got.vector.as_ref().map(Vec::len), Some(vector::DIMENSIONS));
+            assert_eq!(got.text, "Xin chào thế giới");
+            assert_eq!(got.published_or_fetched(), "2026-09-16T00:00:00.000Z");
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn item_vector_null_when_absent() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            insert_item(c, &new_item("i1", "a", "https://a.example/1"))?;
+            assert!(get_item(c, "i1")?.unwrap().vector.is_none());
+            set_item_vector(c, "i1", &vec![0.5; vector::DIMENSIONS])?;
+            assert_eq!(get_item(c, "i1")?.unwrap().vector.unwrap()[3], 0.5);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn upsert_item_conflicts_on_canonical_url() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            insert_item(c, &new_item("i1", "a", "https://a.example/1"))?;
+            let err = insert_item(c, &new_item("i2", "a", "https://a.example/1")).unwrap_err();
+            assert!(err.to_string().contains("UNIQUE"), "{err}");
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn corrupt_vector_blob_is_an_error_not_a_panic() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            insert_item(c, &new_item("i1", "a", "https://a.example/1"))?;
+            c.execute("UPDATE items SET vector = X'0102' WHERE id = 'i1'", [])?;
+            let err = get_item(c, "i1").unwrap_err();
+            assert!(err.to_string().contains("not a multiple of 4"), "{err}");
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn lookups_by_canonical_url_and_title_hash() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            insert_item(c, &new_item("i1", "a", "https://a.example/1"))?;
+            assert!(has_canonical_url(c, "https://a.example/1")?);
+            assert!(!has_canonical_url(c, "https://a.example/2")?);
+            assert!(has_title_hash(c, "ti1")?);
+            assert!(!has_title_hash(c, "nope")?);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn list_items_since_filters_and_orders() {
+        db().with(|c| {
+            upsert_source(c, &feed("a"))?;
+            let mut old = new_item("old", "a", "https://a.example/old");
+            old.fetched_at = "2026-09-01T00:00:00.000Z".into();
+            insert_item(c, &old)?;
+            insert_item(c, &new_item("b2", "a", "https://a.example/b2"))?;
+            insert_item(c, &new_item("a1", "a", "https://a.example/a1"))?;
+            let ids: Vec<String> = list_items_since(c, "2026-09-10T00:00:00.000Z")?
+                .into_iter()
+                .map(|i| i.id)
+                .collect();
+            assert_eq!(ids, vec!["a1", "b2"]);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn upsert_topic_keeps_learned_state() {
+        db().with(|c| {
+            upsert_topic(c, &topic("rust"))?;
+            set_topic_vector(c, "rust", &vec![1.0; vector::DIMENSIONS])?;
+            c.execute("UPDATE topics SET saturation = 3, last_positive_at = '2026-09-01T00:00:00.000Z' WHERE id = 'rust'", [])?;
+            let mut changed = topic("rust");
+            changed.name = "Rust lang".into();
+            changed.weight = 2.0;
+            upsert_topic(c, &changed)?;
+            let t = &list_topics(c)?[0];
+            assert_eq!(t.name, "Rust lang");
+            assert_eq!(t.weight, 2.0);
+            assert_eq!(t.saturation, 3);
+            assert!(t.vector.is_some());
+            assert_eq!(t.last_positive_at.as_deref(), Some("2026-09-01T00:00:00.000Z"));
+            assert_eq!(t.origin, TopicOrigin::Seed);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn delete_seed_topics_not_in_keeps_curator_topics() {
+        db().with(|c| {
+            upsert_topic(c, &topic("keep"))?;
+            upsert_topic(c, &topic("drop"))?;
+            let mut curated = topic("curated");
+            curated.origin = TopicOrigin::Curator;
+            upsert_topic(c, &curated)?;
+            assert_eq!(delete_seed_topics_not_in(c, &["keep"])?, 1);
+            let ids: Vec<String> = list_topics(c)?.into_iter().map(|t| t.id).collect();
+            assert_eq!(ids, vec!["curated", "keep"]);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn repo_is_the_only_sql_site() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        fn walk(dir: &std::path::Path, out: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    && !path.to_string_lossy().contains("/src/db/")
+                    && std::fs::read_to_string(&path).unwrap().contains("rusqlite")
+                {
+                    out.push(path.display().to_string());
+                }
+            }
+        }
+        walk(&root, &mut offenders);
+        assert!(
+            offenders.is_empty(),
+            "rusqlite used outside src/db/: {offenders:?}"
+        );
+    }
+}
