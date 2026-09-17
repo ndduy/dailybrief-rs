@@ -741,6 +741,61 @@ pub fn set_editor_notes(conn: &Connection, text: &str, at: &str) -> Result<(), D
     Ok(())
 }
 
+// ---------- feed_issues ----------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeedIssue {
+    pub id: i64,
+    pub source_id: String,
+    pub run_id: Option<String>,
+    pub kind: String,
+    pub note: Option<String>,
+    pub at: String,
+}
+
+pub fn insert_feed_issue(
+    conn: &Connection,
+    source_id: &str,
+    run_id: &str,
+    kind: &str,
+    note: Option<&str>,
+    at: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO feed_issues (source_id, run_id, kind, note, at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![source_id, run_id, kind, note, at],
+    )?;
+    Ok(())
+}
+
+pub fn list_feed_issues(conn: &Connection, source_id: &str) -> Result<Vec<FeedIssue>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, source_id, run_id, kind, note, at FROM feed_issues WHERE source_id = ?1 ORDER BY id",
+    )?;
+    let rows = stmt
+        .query_map([source_id], |r| {
+            Ok(FeedIssue {
+                id: r.get("id")?,
+                source_id: r.get("source_id")?,
+                run_id: r.get("run_id")?,
+                kind: r.get("kind")?,
+                note: r.get("note")?,
+                at: r.get("at")?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Stamps a reported issue on the source without touching failures or enablement.
+pub fn set_source_last_error(conn: &Connection, id: &str, error: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE sources SET last_error = ?2 WHERE id = ?1",
+        params![id, error],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

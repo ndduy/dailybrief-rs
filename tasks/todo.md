@@ -256,12 +256,12 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Three tools over existing core: `fetch_sources` (runs ingest; idempotent within the process via an `AtomicBool`, second call returns the first report), `report_feed_issue` (`kind ∈ {dead, paywalled, junk, duplicate}`; writes `feed_issues` and `sources.last_error`; unknown feed → error), `editor_notes` (`op ∈ {read, replace}`; ≤ 2 000 chars; single row).
 
 **Acceptance criteria:**
-- [ ] test: `fetch_sources_is_idempotent_within_run`; `report_feed_issue_unknown_feed_is_error`; `report_feed_issue_writes_row_and_last_error`; `editor_notes_roundtrip`; `editor_notes_rejects_over_2000_chars` (2 001 chars of Vietnamese counts as 2 001, not bytes).
-- [ ] `tools/list` now has four tools; the snapshot is updated.
+- [x] test: `fetch_sources_is_idempotent_within_run`; `report_feed_issue_unknown_feed_is_error`; `report_feed_issue_writes_row_and_last_error`; `editor_notes_roundtrip`; `editor_notes_rejects_over_2000_chars` (2 001 chars of Vietnamese counts as 2 001, not bytes).
+- [x] `tools/list` now has four tools; the snapshot is updated.
 
 **Verification:**
-- [ ] `cargo test mcp::`
-- [ ] fast checks clean
+- [x] `cargo test mcp::`
+- [x] fast checks clean
 
 **Dependencies:** Task 13
 **Files likely touched:** `src/mcp/server.rs`, `src/mcp/tools/fetch_sources.rs`, `src/mcp/tools/report_feed_issue.rs`, `src/mcp/tools/editor_notes.rs`, `src/db/repo.rs`

@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8};
 
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
+use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use serde_json::Value;
@@ -81,6 +82,33 @@ impl DailyBriefServer {
     async fn get_briefing(&self) -> CallToolResult {
         guarded(tools::get_briefing::run(self)).await
     }
+
+    /// Pull every enabled feed now (conditional GET), extract new articles, dedupe and embed them.
+    /// Returns counts per feed. Calling it again in the same run returns the first report.
+    #[tool]
+    async fn fetch_sources(&self) -> CallToolResult {
+        guarded(tools::fetch_sources::run(self)).await
+    }
+
+    /// Record that a feed is dead, paywalled, junk or a duplicate so the Curator can act on it.
+    /// Use the feed id from get_briefing's feedHealth.
+    #[tool]
+    async fn report_feed_issue(
+        &self,
+        Parameters(input): Parameters<tools::report_feed_issue::ReportFeedIssueInput>,
+    ) -> CallToolResult {
+        guarded(tools::report_feed_issue::run(self, input)).await
+    }
+
+    /// Read or replace your notes: one text of at most 2000 characters that survives across runs.
+    /// Use it for what you learned about sources and topics.
+    #[tool]
+    async fn editor_notes(
+        &self,
+        Parameters(input): Parameters<tools::editor_notes::EditorNotesInput>,
+    ) -> CallToolResult {
+        guarded(tools::editor_notes::run(self, input)).await
+    }
 }
 
 #[tool_handler]
@@ -118,10 +146,16 @@ pub(crate) mod testkit {
 
     pub fn server_with(db: Db) -> DailyBriefServer {
         let loaded = load_all(&Env::from_lookup(|_| None).unwrap()).unwrap();
+        server_with_feeds(db, loaded.feeds)
+    }
+
+    /// A server whose `fetch_sources` targets `feeds` (tests point them at wiremock).
+    pub fn server_with_feeds(db: Db, feeds: Vec<Feed>) -> DailyBriefServer {
+        let loaded = load_all(&Env::from_lookup(|_| None).unwrap()).unwrap();
         DailyBriefServer::new(
             db,
             loaded.config.clone(),
-            loaded.feeds,
+            feeds,
             RUN.into(),
             Arc::new(FakeEmbedder),
             client(&loaded.config.ingest).unwrap(),
@@ -221,9 +255,17 @@ mod tests {
     #[tokio::test]
     async fn tools_list_has_get_briefing_with_camel_case_fields() {
         let h = Harness::start(server_with(Db::open_in_memory().unwrap())).await;
-        assert_eq!(h.tool_names().await, vec!["get_briefing"]);
+        assert_eq!(
+            h.tool_names().await,
+            vec![
+                "editor_notes",
+                "fetch_sources",
+                "get_briefing",
+                "report_feed_issue"
+            ]
+        );
         let tools = h.client.list_all_tools().await.unwrap();
-        let t = &tools[0];
+        let t = tools.iter().find(|t| t.name == "get_briefing").unwrap();
         assert!(
             t.description
                 .as_deref()
