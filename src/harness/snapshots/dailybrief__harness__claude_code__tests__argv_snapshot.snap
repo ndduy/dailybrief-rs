@@ -1,0 +1,31 @@
+---
+source: src/harness/claude_code.rs
+expression: argv
+---
+[
+    "-p",
+    "Build today's digest. Start with get_briefing.",
+    "--system-prompt-file",
+    "/app/prompts/editor.md",
+    "--restricted",
+    "--tools",
+    "WebSearch",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "/data/runs/2026-09-17-abcd1234/mcp.json",
+    "--allowedTools",
+    "mcp__dailybrief__*",
+    "WebSearch",
+    "--permission-prompts",
+    "none",
+    "--max-turns",
+    "120",
+    "--model",
+    "opus",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--json-schema",
+    "{\"properties\":{\"date\":{\"type\":\"string\"}},\"type\":\"object\"}",
+    "--no-session-persistence",
+]

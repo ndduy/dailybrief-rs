@@ -339,13 +339,13 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Implement ADR 0001's types: `HarnessRequest`, `RunOutcome::{Success, Failed { reason, message, exit_code, result, init }, Killed}`, `HarnessKind`. `harness::claude_code::build_argv` (the exact `SPEC.md` §3 flag list), `build_env` (allowlist + `DAILYBRIEF_*`; refuse `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`; require `CLAUDE_CODE_OAUTH_TOKEN`), and the `StreamEvent` internally-tagged enum (`system/init`, `result`, other with raw `Value`, `Unparseable`).
 
 **Acceptance criteria:**
-- [ ] test: `argv_snapshot` (`insta`, flag for flag against `SPEC.md` §3); `argv_never_contains_bare`.
-- [ ] test: `env_refuses_anthropic_api_key`, `_refuses_auth_token`, `_requires_oauth_token`, `_passes_only_allowlist_and_dailybrief_prefix`, `_drops_everything_else`.
-- [ ] test: `parses_init_event`, `parses_result_success`, `parses_result_error_max_turns`, `passes_through_unknown_type` (`rate_limit_event`), `unparseable_line_is_kept_raw` — on hand-written minimal fixture lines under `tests/fixtures/transcripts/`.
+- [x] test: `argv_snapshot` (`insta`, flag for flag against `SPEC.md` §3); `argv_never_contains_bare`.
+- [x] test: `env_refuses_anthropic_api_key`, `_refuses_auth_token`, `_requires_oauth_token`, `_passes_only_allowlist_and_dailybrief_prefix`, `_drops_everything_else`.
+- [x] test: `parses_init_event`, `parses_result_success`, `parses_result_error_max_turns`, `passes_through_unknown_type` (`rate_limit_event`), `unparseable_line_is_kept_raw` — on hand-written minimal fixture lines under `tests/fixtures/transcripts/`.
 
 **Verification:**
-- [ ] `cargo test harness::`
-- [ ] fast checks clean
+- [x] `cargo test harness::`
+- [x] fast checks clean
 
 **Dependencies:** Task 17
 **Files likely touched:** `src/harness/mod.rs`, `src/harness/types.rs`, `src/harness/claude_code.rs`, `tests/fixtures/transcripts/success.jsonl`, `tests/fixtures/transcripts/max-turns.jsonl`

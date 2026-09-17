@@ -8,4 +8,5 @@ pub mod config;
 pub mod core;
 pub mod db;
 pub mod editor;
+pub mod harness;
 pub mod mcp;
