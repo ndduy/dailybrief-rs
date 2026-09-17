@@ -43,6 +43,11 @@ enum Command {
         #[arg(long)]
         message: Option<String>,
     },
+    /// Egress scan of a run transcript; exit 1 on any finding.
+    ScanTranscript {
+        /// Path to transcript.jsonl
+        path: std::path::PathBuf,
+    },
 }
 
 /// Logs go to stderr in every command: stdout is the MCP protocol stream for `mcp` and the
@@ -98,6 +103,10 @@ async fn main() -> anyhow::Result<()> {
                 &mut std::io::stdout(),
             )
             .await?;
+            std::process::exit(code);
+        }
+        Command::ScanTranscript { path } => {
+            let code = commands::scan_transcript::run(&env, &path, &mut std::io::stdout()).await?;
             std::process::exit(code);
         }
     }

@@ -3,6 +3,8 @@
 
 pub mod claude_code;
 pub mod runner;
+pub mod scan_transcript;
+pub mod scheduler;
 pub mod service_runner;
 pub mod types;
 pub mod verify;

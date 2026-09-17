@@ -120,12 +120,12 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Task 18: Harness types, argv builder, env allowlist, stream-json events
 - [x] Task 19: Spawning `claude`: stdout/stderr, wall clock, outcome mapping, fake `claude`
 - [x] Task 20: Runner: lock, attempts, `runs` rows, transcript, verify; the `run` verb
-- [ ] Task 21: Scheduler loop and transcript scan; the `scan-transcript` verb
+- [x] Task 21: Scheduler loop and transcript scan; the `scan-transcript` verb
 
 ### Checkpoint F
-- [ ] `dailybrief run --attempts 2` with the fake `claude` on `PATH`: success, max-turns-then-success, killed, no-result each leave the right `runs` rows and files
-- [ ] Argv snapshot matches `SPEC.md` §3 flag for flag; env-scrub tests green
-- [ ] Review with human
+- [x] `dailybrief run --attempts 2` with the fake `claude` on `PATH`: success, max-turns-then-success, killed, no-result each leave the right `runs` rows and files
+- [x] Argv snapshot matches `SPEC.md` §3 flag for flag; env-scrub tests green
+- [x] Review with human (autonomous run)
 
 ### Phase 6: Web (`web-read`)
 - [ ] Task 22: App shell, bind guard, security headers, digest pages and states; `serve` verb

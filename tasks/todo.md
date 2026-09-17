@@ -390,20 +390,20 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Implement ADR 0003 (`harness::scheduler` with injectable clock and sleep) and `harness::scan_transcript` (forbidden fragments: vault paths, `sk-ant-`, `OAUTH_TOKEN=`; any topic description ≥ 12 chars; every `read_item` `tool_result` must be a prefix of the stored item text for a known id; more than 5 `WebSearch` tool uses is a finding). `commands::scan_transcript` exits 1 on findings.
 
 **Acceptance criteria:**
-- [ ] test: `scheduler_next_occurrence_in_ho_chi_minh` (06:30 local = 23:30 UTC previous day); `scheduler_fires_once_per_tick_with_fake_clock`; `scheduler_skips_when_lock_held_and_logs`.
-- [ ] test: `scan_flags_vault_path`, `_flags_topic_description`, `_flags_foreign_read_item_text`, `_flags_unknown_item_id`, `_flags_more_than_5_web_searches`, `_passes_clean_transcript` — on hand-written fixtures.
+- [x] test: `scheduler_next_occurrence_in_ho_chi_minh` (06:30 local = 23:30 UTC previous day); `scheduler_fires_once_per_tick_with_fake_clock`; `scheduler_skips_when_lock_held_and_logs`.
+- [x] test: `scan_flags_vault_path`, `_flags_topic_description`, `_flags_foreign_read_item_text`, `_flags_unknown_item_id`, `_flags_more_than_5_web_searches`, `_passes_clean_transcript` — on hand-written fixtures.
 
 **Verification:**
-- [ ] `cargo test harness::scheduler harness::scan_transcript`
-- [ ] fast checks clean
+- [x] `cargo test harness::scheduler harness::scan_transcript`
+- [x] fast checks clean
 
 **Dependencies:** Task 20
 **Files likely touched:** `Cargo.toml` (`croner`), `src/harness/scheduler.rs`, `src/harness/scan_transcript.rs`, `src/commands/scan_transcript.rs`, `tests/fixtures/transcripts/leaky.jsonl`
 **Estimated scope:** Medium
 
 ## Checkpoint F
-- [ ] Runner end-to-end with the fake `claude` in all outcome shapes; argv and env tests green; `cargo test` green
-- [ ] Review with human before Phase 6
+- [x] Runner end-to-end with the fake `claude` in all outcome shapes; argv and env tests green; `cargo test` green
+- [x] Review with human before Phase 6 (autonomous run; 185 tests green)
 
 ---
 

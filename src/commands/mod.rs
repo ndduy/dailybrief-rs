@@ -5,6 +5,7 @@ pub mod fetch;
 pub mod mcp;
 pub mod migrate;
 pub mod run;
+pub mod scan_transcript;
 
 use std::path::PathBuf;
 
