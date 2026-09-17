@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Run any command inside the test container: bin/dc cargo test · bin/dc bin/check full
+set -eu
+cd "$(dirname "$0")/.."
+exec docker compose --profile test run --rm test "$@"

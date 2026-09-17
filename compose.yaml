@@ -1,0 +1,77 @@
+# dailybrief — SPEC.md §9. Profiles: app (the service), dev (cargo watch), test (bin/dc …).
+# The project name keeps this stack's volumes apart from any other compose project on the box.
+name: dailybrief-rs
+
+x-tz: &tz
+  TZ: Asia/Ho_Chi_Minh
+
+services:
+  app:
+    profiles: [app]
+    build:
+      context: .
+      target: runtime
+    image: dailybrief-rs:runtime
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      <<: *tz
+      # CF_ACCESS_AUD / CF_ACCESS_TEAM come from .env; the service binds 0.0.0.0 inside the
+      # container and refuses to start without them (web::auth), so Access is never bypassed here.
+    ports:
+      - "127.0.0.1:8788:8788"
+    volumes:
+      - dailybrief-data:/data
+      - dailybrief-claude:/home/app/.claude
+    init: true
+    restart: unless-stopped
+
+  dev:
+    profiles: [dev]
+    build:
+      context: .
+      target: dev
+    image: dailybrief-rs:dev
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *tz
+      DAILYBRIEF_BIND: 0.0.0.0
+      DAILYBRIEF_DATA_DIR: /data
+      DAILYBRIEF_CONFIG: /app/config/config.toml
+    ports:
+      - "127.0.0.1:8788:8788"
+    volumes:
+      - .:/app
+      - cargo-target:/app/target
+      - cargo-registry:/usr/local/cargo/registry
+      - dailybrief-data:/data
+      - dailybrief-claude:/home/app/.claude
+    init: true
+    command: ["cargo", "watch", "-x", "run -- serve"]
+
+  test:
+    profiles: [test]
+    build:
+      context: .
+      target: dev
+    image: dailybrief-rs:dev
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *tz
+    volumes:
+      - .:/app
+      - cargo-target:/app/target
+      - cargo-registry:/usr/local/cargo/registry
+    init: true
+    working_dir: /app
+
+volumes:
+  dailybrief-data:
+  dailybrief-claude:
+  cargo-target:
+  cargo-registry:

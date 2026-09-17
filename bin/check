@@ -38,6 +38,8 @@ full() {
   cargo llvm-cov report --fail-under-lines 60 \
     --ignore-filename-regex '/src/(core|mcp|db|harness|editor)/|/src/main\.rs|/src/bin/'
   cargo llvm-cov report --json --output-path target/coverage.json
+  # Child processes the tests spawn (the binary, the fake claude) drop profiles in the cwd.
+  rm -f ./*.profraw
   # Every src/<module>/ must fall under exactly one floor (ADR 0004).
   for m in $(find src -mindepth 1 -maxdepth 1 -type d -printf '%f\n'); do
     case "$m" in

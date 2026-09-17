@@ -2,6 +2,7 @@
 //! binary so the check budget stays flat as tests are added.
 
 mod auth;
+mod compose;
 mod harness;
 mod mcp;
 mod mcp_stdout;

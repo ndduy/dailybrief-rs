@@ -1,0 +1,14 @@
+.git
+target
+data
+models
+.env
+.env.*
+*.profraw
+*.log
+.claude
+.agents
+docs
+spec
+tasks
+skills-lock.json
