@@ -74,13 +74,13 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Implement ADR 0005: the `Embedder` trait, `FakeEmbedder` (SHA-256 of the text → 384 floats → normalised), and `FastEmbedder` on the rustls features with lazy init and the model cache under `<data_dir>/models`. Add `embedder_for(&Config) -> Arc<dyn Embedder>`.
 
 **Acceptance criteria:**
-- [ ] test: `core::embed::fake_is_deterministic_and_unit_length`; `fake_differs_for_different_text`; `empty_input_gives_empty_output`.
-- [ ] test (opt-in): `embed_real_bge_small_is_384d_unit_length`, runs only with `EMBED_REAL=1`, skipped with a printed reason otherwise (not `#[ignore]` without a string).
-- [ ] `FastEmbedder::new` does not load the model; the first `embed` does; `Cargo.toml` pins the feature set from ADR 0005 and `cargo tree -e features | grep native-tls` is empty.
+- [x] test: `core::embed::fake_is_deterministic_and_unit_length`; `fake_differs_for_different_text`; `empty_input_gives_empty_output`.
+- [x] test (opt-in): `embed_real_bge_small_is_384d_unit_length`, runs only with `EMBED_REAL=1`, skipped with a printed reason otherwise (not `#[ignore]` without a string).
+- [x] `FastEmbedder::new` does not load the model; the first `embed` does; `Cargo.toml` pins the feature set from ADR 0005 and `cargo tree -e features | grep native-tls` is empty.
 
 **Verification:**
-- [ ] `cargo test core::embed`; `EMBED_REAL=1 cargo test embed_real` once on the host (evidence: output in the commit message)
-- [ ] fast checks clean
+- [x] `cargo test core::embed`; `EMBED_REAL=1 cargo test embed_real` once on the host (evidence: output in the commit message)
+- [x] fast checks clean
 
 **Dependencies:** Task 3
 **Files likely touched:** `Cargo.toml`, `src/core/embed.rs`
