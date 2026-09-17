@@ -11,14 +11,14 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Turn the hello-world crate into the package described in `spec/r0.md` §3/§5: `lib.rs` with `#![forbid(unsafe_code)]`, `main.rs` with a `clap` CLI that has no verbs yet beyond `--help`, and the `config` module that loads and validates `config/config.toml`, `feeds.toml`, `topics.toml` and the `DAILYBRIEF_*` env into typed structs via `TryFrom`, with the committed file's values as defaults.
 
 **Acceptance criteria:**
-- [ ] `Config`, `Feed`, `Topic`, `Env` types exist; unknown keys in any TOML file are an error; ids must match `^[a-z0-9][a-z0-9_-]{0,63}$` and be unique; feed URLs must be http(s); the cron field is validated with `croner` (ADR 0003).
-- [ ] `feeds.toml` and `topics.toml` resolve next to `config.toml`; relative `data_dir` resolves against the current working directory; `DAILYBRIEF_CONFIG`, `DAILYBRIEF_DATA_DIR`, `DAILYBRIEF_BIND`, `DAILYBRIEF_RUN_ID`, `DAILYBRIEF_IN_CONTAINER` override.
-- [ ] test: `config::load::loads_committed_files` parses the real `config/` directory; `rejects_unknown_key`, `rejects_duplicate_id`, `rejects_non_http_url`, `rejects_bad_cron`; `defaults_match_committed_values` (an empty `[caps]` table yields the numbers in `config/config.toml`).
+- [x] `Config`, `Feed`, `Topic`, `Env` types exist; unknown keys in any TOML file are an error; ids must match `^[a-z0-9][a-z0-9_-]{0,63}$` and be unique; feed URLs must be http(s); the cron field is validated with `croner` (ADR 0003).
+- [x] `feeds.toml` and `topics.toml` resolve next to `config.toml`; relative `data_dir` resolves against the current working directory; `DAILYBRIEF_CONFIG`, `DAILYBRIEF_DATA_DIR`, `DAILYBRIEF_BIND`, `DAILYBRIEF_RUN_ID`, `DAILYBRIEF_IN_CONTAINER` override.
+- [x] test: `config::load::loads_committed_files` parses the real `config/` directory; `rejects_unknown_key`, `rejects_duplicate_id`, `rejects_non_http_url`, `rejects_bad_cron`; `defaults_match_committed_values` (an empty `[caps]` table yields the numbers in `config/config.toml`).
 
 **Verification:**
-- [ ] `cargo test config::`
-- [ ] `cargo build --all-targets` with `RUSTFLAGS="-D warnings"`; `cargo clippy --all-targets -- -D warnings`; `cargo fmt --check`
-- [ ] `cargo run -- --help` lists no verbs yet and exits 0
+- [x] `cargo test config::`
+- [x] `cargo build --all-targets` with `RUSTFLAGS="-D warnings"`; `cargo clippy --all-targets -- -D warnings`; `cargo fmt --check`
+- [x] `cargo run -- --help` lists no verbs yet and exits 0
 
 **Dependencies:** None
 **Files likely touched:** `Cargo.toml`, `src/lib.rs`, `src/main.rs`, `src/config/mod.rs`, `src/config/schema.rs`, `src/config/load.rs`

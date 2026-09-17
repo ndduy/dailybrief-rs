@@ -68,7 +68,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 ## Task list
 
 ### Phase 0: Foundation (`config-db`)
-- [ ] Task 1: Crate skeleton and config loading
+- [x] Task 1: Crate skeleton and config loading
 - [ ] Task 2: Migration ledger and the `Db` handle; `migrate` verb
 - [ ] Task 3: Vectors, time, and the repo for sources, items, topics
 
