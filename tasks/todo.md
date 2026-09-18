@@ -503,18 +503,18 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `.github/workflows/ci.yml`: build the `test` image, run `bin/check full` inside it, upload the coverage JSON artifact, run `docker history` secret check on the runtime image, fail on any `src/<mod>/` directory matched by neither coverage regex (ADR 0004). Record `bin/check task` wall time in the log.
 
 **Acceptance criteria:**
-- [ ] CI green on `main` for the commit that adds it; the job log shows both coverage floors, `cargo deny`, `gitleaks`, and the wall time.
+- [x] CI green on `main` (run 35303550178, 33 min; the first run 35301452795 passed the gate and failed only on the artifact path). The job log shows `TOTAL` 92.69 % lines (core, floor 80) and 75.57 % (rest, floor 60), `advisories ok, bans ok, licenses ok, sources ok`, `no leaks found`, and `full: ok in 1496s`.
 
 **Verification:**
-- [ ] `gh run watch` on the push
+- [x] `gh run watch` on the push
 
 **Dependencies:** Task 26
 **Files likely touched:** `.github/workflows/ci.yml`, `bin/check`
 **Estimated scope:** Small
 
 ## Checkpoint H
-- [ ] `bin/dc cargo test` green; `bin/check full` green; CI green
-- [ ] Image hygiene verified; `.env` holds only the OAuth token and the two `CF_ACCESS_*` values
+- [x] `bin/dc cargo test` green; `bin/check full` green (151 s on the box); CI green
+- [x] Image hygiene verified; `.env` holds only the OAuth token and the two `CF_ACCESS_*` values
 - [ ] Review with human before spending subscription usage
 
 ---

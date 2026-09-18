@@ -140,7 +140,7 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 ### Phase 7: Ops (`ops`)
 - [x] Task 25: `reembed` verb, `bin/check`, `deny.toml`, cargo profiles, gitleaks
 - [x] Task 26: Dockerfile, `compose.yaml`, `bin/dc`, `.dockerignore`, compose test
-- [ ] Task 27: CI workflow
+- [x] Task 27: CI workflow
 
 ### Checkpoint H
 - [ ] `bin/dc cargo test` green inside the `test` container; `bin/check full` green; CI green on `main`
