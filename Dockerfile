@@ -56,19 +56,24 @@ RUN apt-get update \
  && chown -R app:app /app /data /home/app
 USER app
 ENV HOME=/home/app \
-    PATH=/home/app/.local/bin:/usr/local/bin:/usr/bin:/bin
-# Claude Code at an exact version, installed for the non-root user by the native installer
-# (checksum-verified). It is the subscription-billed harness; its only credential is the
-# CLAUDE_CODE_OAUTH_TOKEN from .env at run time. Never an ANTHROPIC_API_KEY.
-RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" \
- && claude --version
-ENV DAILYBRIEF_IN_CONTAINER=1 \
+    PATH=/home/app/.local/bin:/usr/local/bin:/usr/bin:/bin \
+    DAILYBRIEF_IN_CONTAINER=1 \
     DAILYBRIEF_CONFIG=/app/config/config.toml \
     DAILYBRIEF_DATA_DIR=/data \
     DAILYBRIEF_BIND=0.0.0.0 \
     CLAUDE_CONFIG_DIR=/home/app/.claude \
     DISABLE_AUTOUPDATER=1 \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+# Claude Code at an exact version, installed for the non-root user by the native installer
+# (checksum-verified). It is the subscription-billed harness; its only credential is the
+# CLAUDE_CODE_OAUTH_TOKEN from .env at run time. Never an ANTHROPIC_API_KEY.
+# The version check runs against a throwaway config dir and the real config dir (the
+# dailybrief-claude volume adopts it) ships empty: Claude Code refuses to start when it finds
+# backups but no config file, which is what a build-time run leaves behind otherwise.
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" \
+ && CLAUDE_CONFIG_DIR=/tmp/claude-verify claude --version \
+ && rm -rf /tmp/claude-verify /home/app/.claude.json \
+ && find /home/app/.claude -mindepth 1 -delete
 WORKDIR /app
 COPY --chown=app:app config ./config
 COPY --chown=app:app prompts ./prompts

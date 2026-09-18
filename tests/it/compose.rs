@@ -121,3 +121,30 @@ fn bin_dc_runs_the_test_profile() {
         "bin/dc is executable"
     );
 }
+
+/// The first smoke run failed with "Claude configuration file not found … a backup exists":
+/// the build-time `claude --version` ran before `CLAUDE_CONFIG_DIR` was set, so the config
+/// landed in $HOME while its backups landed in the config dir the volume adopts. The image must
+/// set the env first, verify with a throwaway dir, and ship the config dir empty.
+#[test]
+fn dockerfile_ships_an_empty_claude_config_dir() {
+    let dockerfile = read("Dockerfile");
+    let env_at = dockerfile
+        .find("CLAUDE_CONFIG_DIR=/home/app/.claude")
+        .expect("CLAUDE_CONFIG_DIR is set");
+    let install_at = dockerfile
+        .find("claude.ai/install.sh")
+        .expect("the native installer line");
+    assert!(
+        env_at < install_at,
+        "CLAUDE_CONFIG_DIR must be set before Claude Code runs"
+    );
+    assert!(
+        dockerfile.contains("CLAUDE_CONFIG_DIR=/tmp/claude-verify claude --version"),
+        "the version check uses a throwaway config dir"
+    );
+    assert!(
+        dockerfile.contains("find /home/app/.claude -mindepth 1 -delete"),
+        "the config dir the volume adopts is shipped empty"
+    );
+}

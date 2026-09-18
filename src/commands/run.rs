@@ -47,16 +47,8 @@ pub async fn run(
             "harness '{harness}' is not available in R0 (only claude-code)"
         )));
     }
-    for (what, path) in [("prompt", &args.prompt), ("schema", &args.schema)] {
-        if let Some(p) = path
-            && !p.exists()
-        {
-            return Err(CommandError::Usage(format!(
-                "{what} file not found: {}",
-                p.display()
-            )));
-        }
-    }
+    let prompt = absolute_override("prompt", args.prompt)?;
+    let schema = absolute_override("schema", args.schema)?;
     let db = Db::open(&db_path(&loaded.config))?;
     let runner = ServiceRunner::new(
         loaded.config.clone(),
@@ -65,8 +57,8 @@ pub async fn run(
         embedder_for(&loaded.config),
         process_env,
         ServiceRunnerOptions {
-            system_prompt_path: args.prompt,
-            schema_path: args.schema,
+            system_prompt_path: prompt,
+            schema_path: schema,
             user_message: args.message,
             verify: args.verify,
             max_attempts: args.attempts.clamp(1, 2),
@@ -91,11 +83,57 @@ pub async fn run(
     }
 }
 
+/// A `--prompt` / `--schema` override must exist and is pinned to this process's cwd: the
+/// harness child runs inside the run directory, where a relative path would not resolve.
+fn absolute_override(what: &str, path: Option<PathBuf>) -> Result<Option<PathBuf>, CommandError> {
+    let Some(p) = path else { return Ok(None) };
+    if !p.exists() {
+        return Err(CommandError::Usage(format!(
+            "{what} file not found: {}",
+            p.display()
+        )));
+    }
+    std::path::absolute(&p).map(Some).map_err(|e| {
+        CommandError::Usage(format!(
+            "{what} path {} cannot be resolved: {e}",
+            p.display()
+        ))
+    })
+}
+
 fn service_error(e: ServiceRunnerError) -> CommandError {
     match e {
         ServiceRunnerError::Env(env) => CommandError::Env(env),
         ServiceRunnerError::Runner(r) => CommandError::Runner(r),
         ServiceRunnerError::Db(d) => CommandError::Db(d),
         other => CommandError::Usage(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The first container smoke run failed with "System prompt file not found:
+    /// /data/runs/<id>/prompts/smoke.md": the child runs in the run directory, so a relative
+    /// override must be pinned to the invoking process's cwd before it is handed over.
+    #[test]
+    fn relative_overrides_are_pinned_to_the_invoking_cwd() {
+        let cwd = std::env::current_dir().unwrap();
+        let pinned = absolute_override("prompt", Some(PathBuf::from("prompts/smoke.md")))
+            .unwrap()
+            .unwrap();
+        assert!(pinned.is_absolute());
+        assert_eq!(pinned, cwd.join("prompts/smoke.md"));
+    }
+
+    #[test]
+    fn absolute_and_absent_overrides_pass_through() {
+        let abs = PathBuf::from("/app/prompts/editor.md");
+        assert_eq!(
+            absolute_override("prompt", Some(abs.clone())).unwrap(),
+            Some(abs)
+        );
+        assert_eq!(absolute_override("schema", None).unwrap(), None);
     }
 }
