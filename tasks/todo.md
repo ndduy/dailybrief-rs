@@ -486,13 +486,13 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Multi-stage Dockerfile (`rust:1.98.1-bookworm` builder with BuildKit cache mounts → `debian:bookworm-slim` runtime with `ca-certificates`, Claude Code at an exact version via the native installer, uid 1000 user, `ENV` per `SPEC.md` §9, `COPY` of the binary, `prompts/`, `schemas/`, `config/`); `compose.yaml` profiles `app` (`127.0.0.1:8788:8788`, `env_file .env`, volumes `dailybrief-data:/data`, `dailybrief-claude:/home/app/.claude`, `init: true`, `restart: unless-stopped`, `CF_ACCESS_AUD` always set), `dev` (`cargo watch`), `test` (bind mount + `cargo-target` and `cargo-registry` volumes); `bin/dc`; `.dockerignore`; `tests/it/compose.rs`. Write ADR 0011 (Docker runtime, native vs npm Claude Code, with the verification result).
 
 **Acceptance criteria:**
-- [ ] test: `compose_publishes_loopback_only`; `compose_has_no_anthropic_keys_anywhere`; `compose_app_sets_cf_access_aud`; `dockerignore_excludes_env_data_target`.
-- [ ] `bin/dc cargo test` green inside the `test` container; `docker compose build` succeeds; `docker run --rm dailybrief:runtime dailybrief --help` exits 0; `claude --version` inside the image prints the pinned version; `docker history dailybrief:runtime` shows no secret.
-- [ ] `dailybrief fetch` inside the runtime image against a temp volume downloads the model and stores items (proves ort + glibc).
+- [x] test: `compose_publishes_loopback_only`; `compose_has_no_anthropic_keys_anywhere_and_no_bare`; `compose_app_requires_cf_access_and_mounts_only_named_volumes`; `dockerfile_pins_claude_code_runs_non_root_and_keeps_secrets_out`; `dockerignore_excludes_env_data_target_and_git`; `bin_dc_runs_the_test_profile`.
+- [x] `bin/dc cargo test` green inside the `test` container (208 passed); `docker compose build` succeeds; `docker run --rm dailybrief-rs:runtime dailybrief --help` exits 0; `claude --version` inside the image prints `2.1.274`; `docker history dailybrief-rs:runtime` shows no secret. Base images moved to trixie (ADR 0011: the prebuilt ONNX Runtime needs glibc ≥ 2.38).
+- [x] `dailybrief fetch` inside the runtime image against a temp volume downloads the model and stores items (proves ort + glibc): 36/36 feeds ok, model 128 MB under `/data/models`.
 
 **Verification:**
-- [ ] `docker compose build && bin/dc cargo test`
-- [ ] the four manual commands above, outputs in the commit message
+- [x] `docker compose build && bin/dc cargo test`
+- [x] the four manual commands above, outputs in the commit message
 
 **Dependencies:** Task 25
 **Files likely touched:** `Dockerfile`, `compose.yaml`, `.dockerignore`, `bin/dc`, `tests/it/compose.rs`, `docs/adr/0011-docker-runtime-setup-token.md`

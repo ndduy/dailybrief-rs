@@ -2,14 +2,18 @@
 # dailybrief image (SPEC.md §9, spec/r0.md). Targets:
 #   dev      rust toolchain + the quality tools; source is bind-mounted at /app (profiles dev, test)
 #   runtime  debian slim + the release binary + Claude Code at an exact version (profile app)
-ARG RUST_IMAGE=rust:1.98.1-bookworm
+# trixie, not bookworm: the prebuilt ONNX Runtime that fastembed links (ort-download-binaries)
+# needs glibc >= 2.38 and a matching libstdc++; bookworm has 2.36 and fails at link time.
+ARG RUST_IMAGE=rust:1.98.1-trixie
 ARG CLAUDE_CODE_VERSION=2.1.274
 ARG GITLEAKS_VERSION=8.30.1
 
 # ---- builder: the release binary ----
 FROM ${RUST_IMAGE} AS builder
 WORKDIR /app
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+# The image already pins the toolchain; rust-toolchain.toml is deliberately not copied, or
+# rustup would sync the channel manifest (a network round-trip) on every build.
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
@@ -34,11 +38,15 @@ ENV DAILYBRIEF_IN_CONTAINER=1 \
     DISABLE_AUTOUPDATER=1 \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
     CARGO_TARGET_DIR=/app/target
+# The compose volumes mount here; a named volume copies the mount point's owner on first use,
+# so both must already belong to app or cargo cannot write as uid 1000.
+RUN mkdir -p /app/target /usr/local/cargo/registry \
+ && chown app:app /app/target /usr/local/cargo/registry
 USER app
 WORKDIR /app
 
 # ---- runtime: the service ----
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 ARG CLAUDE_CODE_VERSION
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl zstd libgomp1 libstdc++6 \
