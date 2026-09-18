@@ -1,0 +1,67 @@
+# CI = the same image and the same script as the box: build the test image, run bin/check full
+# inside it, keep the coverage report, and prove the runtime image carries no secret.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks scans the whole history
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the test image (dev target, cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: dev
+          tags: dailybrief-rs:dev
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Hand the checkout to the container user
+        # The test container runs as uid 1000 (Dockerfile); the runner checks out as 1001.
+        # Same owner on both sides keeps cargo writes and gitleaks' git reads working.
+        run: sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+
+      - name: bin/check full inside the test container
+        run: bin/dc bin/check full
+
+      - name: Keep the coverage report
+        run: bin/dc cat target/coverage.json > coverage.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.json
+
+      - name: Build the runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          tags: dailybrief-rs:runtime
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Runtime image carries no secret and runs as the app user
+        run: |
+          set -euo pipefail
+          if docker history --no-trunc dailybrief-rs:runtime | grep -iE 'sk-ant-|OAUTH_TOKEN=|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN'; then
+            echo "secret-looking text in image layers"; exit 1
+          fi
+          test "$(docker run --rm dailybrief-rs:runtime id -u)" = "1000"
+          docker run --rm dailybrief-rs:runtime dailybrief --help >/dev/null
+          docker run --rm dailybrief-rs:runtime claude --version
