@@ -40,11 +40,12 @@ jobs:
         run: bin/dc bin/check full
 
       - name: Keep the coverage report
-        run: bin/dc cat target/coverage.json > coverage.json
+        # The workspace now belongs to uid 1000; the runner shell writes to its own temp dir.
+        run: bin/dc cat target/coverage.json > "$RUNNER_TEMP/coverage.json"
       - uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: coverage.json
+          path: ${{ runner.temp }}/coverage.json
 
       - name: Build the runtime image
         uses: docker/build-push-action@v6
