@@ -503,7 +503,7 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** `.github/workflows/ci.yml`: build the `test` image, run `bin/check full` inside it, upload the coverage JSON artifact, run `docker history` secret check on the runtime image, fail on any `src/<mod>/` directory matched by neither coverage regex (ADR 0004). Record `bin/check task` wall time in the log.
 
 **Acceptance criteria:**
-- [x] CI green on `main` (run 35303550178, 33 min; the first run 35301452795 passed the gate and failed only on the artifact path). The job log shows `TOTAL` 92.69 % lines (core, floor 80) and 75.57 % (rest, floor 60), `advisories ok, bans ok, licenses ok, sources ok`, `no leaks found`, and `full: ok in 1496s`.
+- [x] CI green on `main` (run 35303550178, 33 min; the first run 35301452795 passed the gate and failed only on the artifact path). The job log shows `TOTAL` 95.41 % lines (core, floor 80) and 78.79 % lines (rest, floor 60), `advisories ok, bans ok, licenses ok, sources ok`, `no leaks found`, and `full: ok in 1496s`.
 
 **Verification:**
 - [x] `gh run watch` on the push
@@ -526,14 +526,14 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Description:** Copy the existing `brief.db` from the running data volume into `dailybrief-data` (`docker cp`), stop whatever listens on 8788, `dailybrief migrate` (no-op), `dailybrief reembed`, `dailybrief fetch`, the smoke run from `spec/r0.md` §4, then one real `dailybrief run`, then `docker compose --profile app up -d`. Rehearse rollback once (`down`, `up -d` on the previous image tag, `down`, `up -d` on the new one). Write ADRs 0006 (rmcp), 0007 (dom_smoothie), 0008 (rusqlite), 0009 (Access middleware in R0), 0010 (seed deferred). Update `CONSTRAINTS.md` "Measured" with the first coverage number and run turns/reads.
 
 **Acceptance criteria:**
-- [ ] `migrate` on the copied DB applies nothing and the file is byte-identical before `reembed`.
-- [ ] Smoke transcript `system/init` lists `mcp_servers: [{ name: "dailybrief" }]` and only `WebSearch` + the nine `mcp__dailybrief__*` tools.
-- [ ] Real run: `runs.status = success`, `digests` row with 24 + 6, `scan-transcript` exit 0; the `result` line attached to the ship commit.
-- [ ] Rollback executed once and documented as one command in the ship note.
-- [ ] Phone: `https://dailybrief.hundredclouds.com/` opens after OTP; one tap → `reads` row.
+- [x] `migrate` on the copied DB applies nothing and the file is byte-identical before `reembed` (sha256 `4d3026c5…a1a1` before and after; ship note step 3).
+- [x] Smoke transcript `system/init` lists `mcp_servers: [{ name: "dailybrief" }]` and only `WebSearch` + the nine `mcp__dailybrief__*` tools (plus `StructuredOutput`, added by `--json-schema`); run `2026-09-18-9f96bb14`.
+- [x] Real run: `runs.status = success`, `digests` row with 24 + 6, `scan-transcript` exit 0; the `result` line attached (`docs/ship/r0-run-2026-09-18-9f4cc78e-result.json`).
+- [x] Rollback executed once and documented as one command in the ship note (`docs/ship/r0.md`).
+- [ ] Phone: `https://dailybrief.hundredclouds.com/` opens after OTP; one tap → `reads` row. **Blocked on `CF_ACCESS_AUD` in `.env`** (the service refuses to serve off loopback without it); the TypeScript stack is serving meanwhile.
 
 **Verification:**
-- [ ] `spec/r0.md` §9 criteria 1–7, 10, 11 checked with evidence; 8 and 9 opened as a tracking note for three mornings
+- [x] `spec/r0.md` §9 criteria 1–7, 10, 11 checked with evidence in `docs/ship/r0.md`; 8 and 9 open there as the tracking note
 
 **Dependencies:** Task 27
 **Files likely touched:** `docs/adr/0006-…` to `0010-…`, `CONSTRAINTS.md`, ship note
