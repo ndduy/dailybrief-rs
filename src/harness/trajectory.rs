@@ -429,7 +429,12 @@ pub fn caps_used(
         }
     };
     let turn_count = turns.len() as u64;
-    let max_turns = u64::from(settings.max_turns);
+    // A run that ended in `error_max_turns` shows the cap the harness applied (its own count),
+    // which is also right when the CLI overrode the configured value for that run.
+    let max_turns = match (max_turns_hit, result.and_then(|r| r.num_turns)) {
+        (true, Some(n)) => n.max(turn_count),
+        _ => u64::from(settings.max_turns),
+    };
     let wall_cap = u64::from(settings.wall_clock_minutes) * 60;
     CapsUsed {
         reads: mark(count("read_item"), u64::from(caps.reads)),

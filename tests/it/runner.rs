@@ -456,3 +456,15 @@ async fn runner_stores_every_line_of_a_long_run() {
         .unwrap();
     assert_eq!((count, max_seq), (expected, expected));
 }
+
+/// `--max-turns 0` is refused by the CLI before anything runs.
+#[test]
+fn run_verb_rejects_max_turns_zero() {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_dailybrief"))
+        .args(["run", "--max-turns", "0"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2), "clap usage error");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("max-turns"), "{err}");
+}

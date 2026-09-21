@@ -42,6 +42,9 @@ enum Command {
         /// User message override.
         #[arg(long)]
         message: Option<String>,
+        /// Override harness.claude-code.max_turns for this run (the M2 gate uses 5).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        max_turns: Option<u32>,
     },
     /// Serve the reading pages (and the scheduler) on service.bind:service.port.
     Serve,
@@ -85,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
             prompt,
             schema,
             message,
+            max_turns,
         } => {
             let kind = match kind.as_str() {
                 "manual" => dailybrief::db::repo::RunKind::Manual,
@@ -102,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
                     message,
                     verify: !no_verify,
                     attempts,
+                    max_turns,
                 },
                 &process_env,
                 &mut std::io::stdout(),

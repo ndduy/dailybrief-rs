@@ -47,6 +47,8 @@ pub struct ServiceRunnerOptions {
     pub user_message: Option<String>,
     pub verify: bool,
     pub max_attempts: u32,
+    /// Overrides `harness.claude-code.max_turns` for this runner (the M2 gate run); manual only.
+    pub max_turns: Option<u32>,
 }
 
 impl Default for ServiceRunnerOptions {
@@ -57,6 +59,7 @@ impl Default for ServiceRunnerOptions {
             user_message: None,
             verify: true,
             max_attempts: 2,
+            max_turns: None,
         }
     }
 }
@@ -65,6 +68,14 @@ pub struct ServiceRunner {
     runner: Runner,
     embedder: Arc<dyn Embedder>,
     topics: Vec<Topic>,
+}
+
+/// The config this runner works from, with the `--max-turns` override applied.
+fn with_max_turns(mut config: Config, max_turns: Option<u32>) -> Config {
+    if let Some(n) = max_turns {
+        config.harness.claude_code.max_turns = n;
+    }
+    config
 }
 
 impl ServiceRunner {
@@ -77,6 +88,7 @@ impl ServiceRunner {
         process_env: &HashMap<String, String>,
         opts: ServiceRunnerOptions,
     ) -> Result<Self, ServiceRunnerError> {
+        let config = with_max_turns(config, opts.max_turns);
         let adapter = ClaudeCodeAdapter::new(config.harness.claude_code.clone(), process_env)?;
         Self::with_harness(
             config,
@@ -97,6 +109,7 @@ impl ServiceRunner {
         harness: HarnessKind,
         opts: ServiceRunnerOptions,
     ) -> Result<Self, ServiceRunnerError> {
+        let config = with_max_turns(config, opts.max_turns);
         let schema_path = opts
             .schema_path
             .unwrap_or_else(|| config.paths.digest_schema.clone());

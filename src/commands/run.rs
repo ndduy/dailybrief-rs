@@ -23,6 +23,7 @@ pub struct RunArgs {
     pub message: Option<String>,
     pub verify: bool,
     pub attempts: u32,
+    pub max_turns: Option<u32>,
 }
 
 /// The process exit code for a summary.
@@ -62,6 +63,7 @@ pub async fn run(
             user_message: args.message,
             verify: args.verify,
             max_attempts: args.attempts.clamp(1, 2),
+            max_turns: args.max_turns,
         },
     )
     .map_err(service_error)?;

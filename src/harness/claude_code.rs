@@ -449,6 +449,15 @@ mod tests {
     }
 
     #[test]
+    fn max_turns_override_reaches_argv() {
+        let mut s = settings();
+        s.max_turns = 5;
+        let argv = build_argv(&s, &request());
+        let at = argv.iter().position(|a| a == "--max-turns").unwrap();
+        assert_eq!(argv[at + 1], "5");
+    }
+
+    #[test]
     fn argv_snapshot() {
         let argv = build_argv(&settings(), &request());
         insta::assert_debug_snapshot!(argv);

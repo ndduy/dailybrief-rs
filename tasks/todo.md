@@ -90,19 +90,19 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `ServiceRunnerOptions.max_turns: Option<u32>` overrides `harness.claude-code.max_turns` for that run only (argv `--max-turns n`; the caps bar reads the override from the run's `usage_json` or the `result`'s `num_turns` at the hit). `dailybrief run --max-turns 5` plumbs it. Add `tests/fixtures/transcripts/max-turns-5-fake.jsonl` (five turns then `error_max_turns`, hand-written until Task 15 captures the real one) and prove the rendering end to end.
 
 **Acceptance criteria:**
-- [ ] test: `max_turns_override_reaches_argv` (snapshot variant); `run_verb_rejects_max_turns_zero`.
-- [ ] test: `forced_failure_renders_turns_hit_on_home_and_run_page` — runner against the fake with the 5-turn fixture and `--attempts 1`, then `/` shows "No digest — run failed", the caps bar `turns 5/5` marked hit, and `/runs/{id}` lists five turns.
+- [x] test: `max_turns_override_reaches_argv`; `run_verb_rejects_max_turns_zero` (clap range 1.., exit 2).
+- [x] test: `forced_failure_renders_turns_hit_on_home_and_run_page` — POST /run on a state whose runner replays `max-turns-5-fake.jsonl` with `max_turns: Some(5)`; the day page shows "No digest — run failed" with `turns 5/5` hit and the run link; the run page lists five turns. A max-turns failure shows the harness's own count as the cap, so a CLI override renders right.
 
 **Verification:**
-- [ ] `bin/dc cargo test`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 4
 **Files likely touched:** `src/harness/service_runner.rs`, `src/harness/runner.rs`, `src/harness/claude_code.rs`, `src/commands/run.rs`, `src/main.rs`, `tests/fixtures/transcripts/max-turns-5-fake.jsonl`, `tests/it/runner.rs`
 **Estimated scope:** Medium
 
 ## Checkpoint B
-- [ ] Phone-width check of `/runs/{id}` (screenshot); the fake forced failure shows `turns 5/5` on `/`
+- [ ] Phone-width check of `/runs/{id}` on the live site after the Checkpoint D deploy (the fake forced failure shows `turns 5/5` on the day page: proven by test)
 - [ ] Review with human
 
 ---

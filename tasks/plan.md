@@ -59,7 +59,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Phase 2: Run view (`run-view`)
 - [x] Task 4: `/runs/{id}` page (caps bar, retry chain, turn table); `/runs` columns; failed-state caps bar
-- [ ] Task 5: `dailybrief run --max-turns <n>`; forced-failure rendering against the fake
+- [x] Task 5: `dailybrief run --max-turns <n>`; forced-failure rendering against the fake
 
 ### Checkpoint B
 - [ ] Phone-width check of `/runs/{id}` on a seeded temp DB (screenshot in the task note); the fake forced failure shows `turns 5/5` on `/`

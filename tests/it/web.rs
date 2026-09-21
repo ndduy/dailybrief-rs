@@ -247,6 +247,17 @@ use dailybrief::harness::types::HarnessKind;
 
 /// A state whose runner drives the fake `claude`; `hang` keeps the run alive for the 409 case.
 fn state_with_runner(db: Db, tmp: &std::path::Path, hang: bool) -> AppState {
+    state_with_runner_on(db, tmp, hang, "success.jsonl", None)
+}
+
+/// The same, replaying `transcript` and with an optional `--max-turns` override.
+fn state_with_runner_on(
+    db: Db,
+    tmp: &std::path::Path,
+    hang: bool,
+    transcript: &str,
+    max_turns: Option<u32>,
+) -> AppState {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let data = tmp.join("data");
     std::fs::create_dir_all(&data).unwrap();
@@ -261,7 +272,8 @@ fn state_with_runner(db: Db, tmp: &std::path::Path, hang: bool) -> AppState {
     parent.insert("CLAUDE_CODE_OAUTH_TOKEN".into(), "fake".into());
     parent.insert(
         "DAILYBRIEF_FAKE_TRANSCRIPT".into(),
-        root.join("tests/fixtures/transcripts/success.jsonl")
+        root.join("tests/fixtures/transcripts")
+            .join(transcript)
             .to_string_lossy()
             .into_owned(),
     );
@@ -280,6 +292,7 @@ fn state_with_runner(db: Db, tmp: &std::path::Path, hang: bool) -> AppState {
         ServiceRunnerOptions {
             verify: false,
             max_attempts: 1,
+            max_turns,
             ..Default::default()
         },
     )
@@ -779,4 +792,69 @@ async fn run_page_under_64_kib_for_120_turns() {
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("<span class=\"cap hit\">turns 120/120</span>"));
     assert!(body.len() < 64 * 1024, "{} bytes", body.len());
+}
+
+/// The M2 gate rehearsed against the fake: a run capped at five turns fails with
+/// `error_max_turns`, the day page shows the failed state with `turns 5/5` marked hit and a
+/// link to the run page, and the run page lists the five turns.
+#[tokio::test]
+async fn forced_failure_renders_turns_hit_on_home_and_run_page() {
+    let db = Db::open_in_memory().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner_on(
+        db.clone(),
+        tmp.path(),
+        false,
+        "max-turns-5-fake.jsonl",
+        Some(5),
+    );
+    let (status, _, _) = send(st.clone(), post_run(true, &[])).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        if !st.active.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+    }
+    assert!(
+        !st.active.load(std::sync::atomic::Ordering::SeqCst),
+        "run finished"
+    );
+    let run = db.with(|c| repo::latest_run(c)).unwrap().unwrap();
+    assert_eq!(run.status, RunStatus::Failed);
+    assert!(
+        run.error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("maximum number of turns"),
+        "{:?}",
+        run.error
+    );
+    let today = dailybrief::core::time::date_in_zone(Utc::now(), st.tz);
+    let (status, _, body) = send(
+        st.clone(),
+        Request::builder()
+            .uri(format!("/d/{today}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("No digest — run failed"), "{body}");
+    assert!(
+        body.contains("<span class=\"cap hit\">turns 5/5</span>"),
+        "{body}"
+    );
+    assert!(body.contains(&format!("href=\"/runs/{}\"", run.id)));
+    let (status, _, body) = send(
+        st,
+        Request::builder()
+            .uri(format!("/runs/{}", run.id))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body.matches("<tr class=\"turn\">").count(), 5);
+    assert!(body.contains("<span class=\"cap hit\">turns 5/5</span>"));
 }
