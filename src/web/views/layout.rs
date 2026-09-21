@@ -2,8 +2,11 @@
 
 use maud::{DOCTYPE, Markup, html};
 
-/// htmx pinned from cdnjs; the only client-side script on the page.
+/// htmx pinned from cdnjs; the only client-side script on the page. The integrity hash is
+/// cdnjs's published SRI for this exact file; the CSP in `web::app` allows scripts from
+/// cdnjs only, so a CDN compromise cannot serve a modified file.
 pub const HTMX_SRC: &str = "https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js";
+pub const HTMX_SRI: &str = "sha512-2kIcAizYXhIn8TzUvqzEDZNuDZ+aW7yE/+f1HJHXFjQcGNfv1kqzJSTBRBSlOgp6B/KZsz1K0a3ZTqP9dnxioQ==";
 
 const CSS: &str = r#"
 :root{color-scheme:light dark;--fg:#1a1a1a;--bg:#fff;--muted:#666;--line:#e5e5e5;--badge:#eef}
@@ -38,20 +41,21 @@ pub fn page_with_css(title: &str, extra_css: &str, body: Markup) -> Markup {
                 meta name="referrer" content="no-referrer";
                 title { (title) }
                 style { (maud::PreEscaped(CSS)) (maud::PreEscaped(extra_css)) }
-                script src=(HTMX_SRC) defer {}
+                script src=(HTMX_SRC) integrity=(HTMX_SRI) crossorigin="anonymous" defer {}
             }
             body { (body) }
         }
     }
 }
 
-/// The header actions: the runs index and the Refresh button (`POST /run` through htmx, then
-/// reload to show the running state).
+/// The header actions: the runs index and the Refresh button. Through htmx the `POST /run`
+/// answer carries `HX-Refresh: true`, so the page reloads into the running state with no
+/// inline script (the CSP has no `unsafe-eval` for htmx's `hx-on`).
 pub fn refresh_button() -> Markup {
     html! {
         div.actions {
             a href="/runs" { "Runs" }
-            form method="post" action="/run" hx-post="/run" hx-swap="none" hx-on--after-request="location.reload()" {
+            form method="post" action="/run" hx-post="/run" hx-swap="none" {
                 button type="submit" { "Refresh" }
             }
         }

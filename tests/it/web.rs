@@ -219,6 +219,12 @@ async fn unknown_route_bad_date_and_security_headers() {
     assert_eq!(headers["referrer-policy"], "no-referrer");
     assert_eq!(headers["x-frame-options"], "DENY");
     assert_eq!(headers["x-content-type-options"], "nosniff");
+    let csp = headers["content-security-policy"].to_str().unwrap();
+    assert!(csp.starts_with("default-src 'none'"), "{csp}");
+    assert!(csp.contains("script-src https://cdnjs.cloudflare.com"));
+    assert!(!csp.contains("unsafe-eval"));
+    assert!(csp.contains("frame-ancestors 'none'"));
+    assert_eq!(headers["cache-control"], "no-store");
     let (status, headers, body) = get(db.clone(), "/d/yesterday").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("is not a date"));
@@ -629,4 +635,28 @@ async fn post_run_409_when_the_db_lock_is_held_by_a_scheduled_run() {
     )
     .await;
     assert_eq!(body, "{\"active\":false}", "the flag is released again");
+}
+
+/// The only script is htmx from cdnjs with its SRI hash, and no inline handler that the CSP
+/// (no `unsafe-eval`) would block; htmx gets an HX-Refresh answer instead.
+#[tokio::test]
+async fn page_script_has_sri_and_htmx_post_run_gets_hx_refresh() {
+    let db = Db::open_in_memory().unwrap();
+    published(&db);
+    let (_, _, body) = get(db.clone(), "/d/2026-09-17").await;
+    assert!(body.contains(
+        "src=\"https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js\" integrity=\"sha512-"
+    ));
+    assert!(body.contains("crossorigin=\"anonymous\""));
+    assert!(!body.contains("hx-on"), "no inline handlers under the CSP");
+    assert_eq!(body.matches("<script").count(), 1);
+
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db, tmp.path(), true);
+    let (status, headers, _) = send(st.clone(), post_run(false, &[("hx-request", "true")])).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(headers["hx-refresh"], "true");
+    let (status, headers, _) = send(st, post_run(false, &[("hx-request", "true")])).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(headers["hx-refresh"], "true");
 }

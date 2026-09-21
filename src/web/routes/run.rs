@@ -52,6 +52,9 @@ fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 
 pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let json = wants_json(&headers);
+    // htmx sends HX-Request; an HX-Refresh answer makes it reload the page, so the running
+    // state shows without any inline script (see the CSP in `web::app`).
+    let htmx = header(&headers, "hx-request").is_some_and(|v| v == "true");
     let reply = |status: StatusCode, error: &str| -> Response {
         if json {
             (status, Json(json!({ "error": error }))).into_response()
@@ -63,6 +66,8 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> Respons
     let reply_or_home = |status: StatusCode, body: serde_json::Value| -> Response {
         if json {
             (status, Json(body)).into_response()
+        } else if htmx {
+            (status, [("hx-refresh", "true")]).into_response()
         } else {
             (StatusCode::SEE_OTHER, [(header::LOCATION, "/")]).into_response()
         }

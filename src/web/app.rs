@@ -103,8 +103,19 @@ async fn security_headers(req: axum::extract::Request, next: Next) -> Response {
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
+    h.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP),
+    );
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     res
 }
+
+/// Scripts only from cdnjs (with SRI in the page), inline CSS, htmx requests to this origin,
+/// forms to this origin, nothing framed. No `unsafe-eval`: the page uses no `hx-on`.
+pub const CSP: &str = "default-src 'none'; script-src https://cdnjs.cloudflare.com; \
+                       style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; \
+                       base-uri 'none'; frame-ancestors 'none'";
 
 #[cfg(test)]
 mod tests {

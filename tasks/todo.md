@@ -553,9 +553,10 @@ the DB lock is held, local-date run ids, transcript writer survives DB errors, e
 `spawn_blocking`, `.env` mode 600 check, AA status colours.
 
 Open, in priority order (owner Duy; revisit at the M2 `/plan`):
-- [ ] security M: private-range denylist in `core::http` with a re-check on every redirect hop; wiremock test for a redirect to 127.0.0.1.
+- [x] security M: private-range denylist in `core::http` with a re-check on every redirect hop and a guarded resolver (ce07926).
 - [ ] tests: SIGKILL-after-grace path (`DAILYBRIEF_FAKE_IGNORE_TERM`), killed runs' transcripts asserted, HS256-with-RSA-key confusion token, cosine near-duplicate ingest path, `fatal` fourth-publish semantics pinned.
-- [ ] web: SRI hash on the htmx script + Content-Security-Policy; `GET /run/status` derived from the lock holder; JWKS forced-refetch throttle (≤ 1 / 60 s); manual-run cap counts runs (`attempt = 1`), not attempts.
+- [x] web: SRI hash on the htmx script + Content-Security-Policy + `Cache-Control: no-store`; htmx gets `HX-Refresh` instead of an inline handler (done 2026-09-21).
+- [ ] web: `GET /run/status` derived from the lock holder; JWKS forced-refetch throttle (≤ 1 / 60 s); manual-run cap counts runs (`attempt = 1`), not attempts.
 - [ ] harness: redact `sk-ant-…` from the stored stderr tail and scan `runs.error`; read stdout lines lossily instead of stopping on the first invalid UTF-8 line.
 - [ ] core: `find_duplicate` loads an `(id, vector)` projection once per batch; title-hash dedupe scoped to the 14-day window; `fetch_sources` idempotent under concurrent calls; `verify` wording vs the schema actually checked.
 - [ ] ops: vendor `install.sh` with a checksum; drop `curl`/`zstd` from the runtime image; transcript retention job; decide on dropping `readability`; align the `deny.toml` licence list with CONSTRAINTS.md; drop the unused `harness.mcp_command` config key.
