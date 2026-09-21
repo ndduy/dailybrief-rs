@@ -89,12 +89,18 @@ pub struct Claims {
     pub exp: u64,
 }
 
+/// Unknown-kid tokens force a refetch at most this often; between them the cached set answers
+/// (and an unknown kid is simply 401), so a burst of bad tokens cannot hammer the JWKS endpoint.
+pub const FORCED_REFETCH_MIN_INTERVAL: Duration = Duration::from_secs(60);
+
 pub struct AccessVerifier {
     settings: AccessSettings,
     jwks_url: String,
     client: reqwest::Client,
     cache: RwLock<Option<(JwkSet, Instant)>>,
     ttl: Duration,
+    last_forced: RwLock<Option<Instant>>,
+    forced_min_interval: Duration,
 }
 
 impl AccessVerifier {
@@ -110,6 +116,8 @@ impl AccessVerifier {
                 .unwrap_or_default(),
             cache: RwLock::new(None),
             ttl: JWKS_TTL,
+            last_forced: RwLock::new(None),
+            forced_min_interval: FORCED_REFETCH_MIN_INTERVAL,
         }
     }
 
@@ -137,12 +145,24 @@ impl AccessVerifier {
     }
 
     /// The cached set when fresh, else a fetch; on fetch failure a stale cache still serves.
+    /// A forced refetch (unknown kid) is throttled to one per `forced_min_interval`.
     async fn jwks(&self, force: bool) -> Result<JwkSet, AuthError> {
         if !force
             && let Some((set, at)) = self.cache.read().await.as_ref()
             && at.elapsed() < self.ttl
         {
             return Ok(set.clone());
+        }
+        if force {
+            let mut last = self.last_forced.write().await;
+            if let Some(at) = *last
+                && at.elapsed() < self.forced_min_interval
+                && let Some((set, _)) = self.cache.read().await.as_ref()
+            {
+                tracing::debug!("JWKS forced refetch throttled; answering from the cache");
+                return Ok(set.clone());
+            }
+            *last = Some(Instant::now());
         }
         match self.fetch_jwks().await {
             Ok(set) => Ok(set),

@@ -194,14 +194,14 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `GET /run/status` returns `{ active, heldBy? }` from `runner.lock_holder()` (or the in-process flag when no runner). `repo::count_runs_since` gains `attempt = 1`. `AccessVerifier` records the last forced refetch and answers 401 from the cached set if one happened under 60 s ago. Add the HS256-with-RSA-modulus test.
 
 **Acceptance criteria:**
-- [ ] test: `run_status_reflects_a_scheduled_run` (lock held by `scheduled@…` → `active: true`).
-- [ ] test: `manual_run_cap_counts_runs_not_attempts` (two runs with two attempts each → the third manual run is accepted; the fourth is 429).
-- [ ] test: `jwks_forced_refetch_is_throttled` (two unknown-kid tokens within a second → one JWKS request on the mock).
-- [ ] test: `auth_rejects_hs256_token_with_rs_key_material` (401, no refetch).
+- [x] test: `run_status_reflects_a_scheduled_run` (lock held by `scheduled@morning` → `{active: true, heldBy}`).
+- [x] test: `manual_run_cap_counts_runs_not_attempts` (two runs with two attempts each → the third manual run is accepted; the fourth is 429).
+- [x] test: `jwks_forced_refetch_is_throttled` (two unknown-kid tokens back to back → one forced refetch; a known key still verifies from the cache).
+- [x] test: `auth_rejects_hs256_token_with_rs_key_material` (401, no refetch).
 
 **Verification:**
-- [ ] `bin/dc cargo test web auth`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test web auth`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** None
 **Files likely touched:** `src/web/routes/run.rs`, `src/db/repo.rs`, `src/web/auth.rs`, `tests/it/web.rs`, `tests/it/auth.rs`

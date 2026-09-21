@@ -148,8 +148,18 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> Respons
     reply_or_home(StatusCode::ACCEPTED, json!({ "started": true }))
 }
 
+/// `{ active, heldBy? }`: the in-process flag or the database lock (a scheduled run, or the
+/// CLI, holds only the latter).
 pub async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
-    Json(json!({ "active": state.active.load(Ordering::SeqCst) }))
+    let flag = state.active.load(Ordering::SeqCst);
+    let held_by = match state.runner.as_ref() {
+        Some(runner) => runner.lock_holder().await.ok().flatten(),
+        None => None,
+    };
+    match held_by {
+        Some(holder) => Json(json!({ "active": true, "heldBy": holder })),
+        None => Json(json!({ "active": flag })),
+    }
 }
 
 #[cfg(test)]

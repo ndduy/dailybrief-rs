@@ -640,14 +640,20 @@ async fn post_run_409_when_the_db_lock_is_held_by_a_scheduled_run() {
     assert_eq!(status, StatusCode::CONFLICT);
     assert!(body.contains("scheduled@now"), "{body}");
     let (_, _, body) = send(
-        st,
+        st.clone(),
         Request::builder()
             .uri("/run/status")
             .body(Body::empty())
             .unwrap(),
     )
     .await;
-    assert_eq!(body, "{\"active\":false}", "the flag is released again");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["active"], true, "the scheduled run still holds the lock");
+    assert_eq!(v["heldBy"], "scheduled@now");
+    assert!(
+        !st.active.load(std::sync::atomic::Ordering::SeqCst),
+        "the in-process flag is released again"
+    );
 }
 
 /// The only script is htmx from cdnjs with its SRI hash, and no inline handler that the CSP
@@ -857,4 +863,86 @@ async fn forced_failure_renders_turns_hit_on_home_and_run_page() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.matches("<tr class=\"turn\">").count(), 5);
     assert!(body.contains("<span class=\"cap hit\">turns 5/5</span>"));
+}
+
+/// `GET /run/status` sees a scheduled run, which holds only the database lock.
+#[tokio::test]
+async fn run_status_reflects_a_scheduled_run() {
+    let db = Db::open_in_memory().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db.clone(), tmp.path(), false);
+    let (_, _, body) = send(
+        st.clone(),
+        Request::builder()
+            .uri("/run/status")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(body, "{\"active\":false}");
+    let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    db.with(|c| {
+        repo::try_acquire_lock(c, "scheduled@morning", &now, "2000-01-01T00:00:00.000Z")?;
+        Ok(())
+    })
+    .unwrap();
+    let (_, _, body) = send(
+        st,
+        Request::builder()
+            .uri("/run/status")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["active"], true);
+    assert_eq!(v["heldBy"], "scheduled@morning");
+}
+
+/// Two manual runs that each retried leave four rows; that is two runs against the cap of
+/// three, so a third run is accepted and only a fourth is refused.
+#[tokio::test]
+async fn manual_run_cap_counts_runs_not_attempts() {
+    let db = Db::open_in_memory().unwrap();
+    let insert = |db: &Db, id: &str, attempt: i64| {
+        db.with(|c| {
+            repo::insert_run(
+                c,
+                &NewRun {
+                    id: id.into(),
+                    kind: RunKind::Manual,
+                    harness: "claude-code".into(),
+                    attempt,
+                    started_at: "2026-09-16T23:30:00.000Z".into(),
+                    transcript_path: None,
+                },
+            )
+        })
+        .unwrap();
+    };
+    insert(&db, "2026-09-17-a1", 1);
+    insert(&db, "2026-09-17-a2", 2);
+    insert(&db, "2026-09-17-b1", 1);
+    insert(&db, "2026-09-17-b2", 2);
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db.clone(), tmp.path(), false);
+    let (status, _, _) = send(st.clone(), post_run(true, &[])).await;
+    assert_eq!(
+        status,
+        StatusCode::ACCEPTED,
+        "two runs so far, cap is three"
+    );
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        if !st.active.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+    }
+    insert(&db, "2026-09-17-c1", 1);
+    let (status, _, _) = send(st, post_run(true, &[])).await;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "the fourth run is over the cap"
+    );
 }

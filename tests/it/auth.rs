@@ -221,3 +221,70 @@ async fn auth_503_when_jwks_unreachable_and_cache_empty_and_post_run_is_401() {
         "a billed action without an assertion is 401"
     );
 }
+
+/// Algorithm confusion: an HS256 token "signed" with the RSA public modulus as the HMAC secret
+/// must be refused before any key lookup (and without a JWKS refetch).
+#[tokio::test]
+async fn auth_rejects_hs256_token_with_rs_key_material() {
+    let k1 = key("k1");
+    let server = MockServer::start().await;
+    mount_jwks(&server, &[&k1]).await;
+    let url = format!("{}/cdn-cgi/access/certs", server.uri());
+    let state = state_with_access(&url);
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k1, AUD, &issuer(), 600))).await,
+        StatusCode::OK
+    );
+    let n_bytes = URL_SAFE_NO_PAD
+        .decode(k1.jwk["n"].as_str().unwrap())
+        .unwrap();
+    let exp = (chrono::Utc::now().timestamp() + 600) as u64;
+    let claims =
+        json!({ "aud": [AUD], "iss": issuer(), "exp": exp, "iat": exp - 600, "sub": "user-1" });
+    let mut header = Header::new(Algorithm::HS256);
+    header.kid = Some("k1".into());
+    let forged = encode(&header, &claims, &EncodingKey::from_secret(&n_bytes)).unwrap();
+    assert_eq!(
+        get_with(state, "/", Some(&forged)).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "no refetch for a bad alg"
+    );
+}
+
+/// Two unknown-kid tokens in quick succession cause one forced refetch, not two.
+#[tokio::test]
+async fn jwks_forced_refetch_is_throttled() {
+    let k1 = key("k1");
+    let k2 = key("k2");
+    let k3 = key("k3");
+    let server = MockServer::start().await;
+    mount_jwks(&server, &[&k1]).await;
+    let url = format!("{}/cdn-cgi/access/certs", server.uri());
+    let state = state_with_access(&url);
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k1, AUD, &issuer(), 600))).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k2, AUD, &issuer(), 600))).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k3, AUD, &issuer(), 600))).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        2,
+        "the initial fetch plus one forced refetch; the second unknown kid was throttled"
+    );
+    // A known key still verifies from the cache meanwhile.
+    assert_eq!(
+        get_with(state, "/", Some(&token(&k1, AUD, &issuer(), 600))).await,
+        StatusCode::OK
+    );
+}

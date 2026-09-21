@@ -929,10 +929,10 @@ pub fn delete_run_events(conn: &Connection, run_id: &str) -> Result<usize, DbErr
     Ok(conn.execute("DELETE FROM run_events WHERE run_id = ?1", [run_id])?)
 }
 
-/// Runs of `kind` started at or after `since`.
+/// Runs of `kind` started at or after `since`: first attempts only, so a retried run counts once.
 pub fn count_runs_since(conn: &Connection, kind: RunKind, since: &str) -> Result<i64, DbError> {
     Ok(conn.query_row(
-        "SELECT count(*) FROM runs WHERE kind = ?1 AND started_at >= ?2",
+        "SELECT count(*) FROM runs WHERE kind = ?1 AND started_at >= ?2 AND attempt = 1",
         params![kind.as_str(), since],
         |r| r.get(0),
     )?)

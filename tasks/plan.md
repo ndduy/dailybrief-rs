@@ -78,7 +78,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 - [ ] Review with human
 
 ### Phase 5: Web hardening (`web-hardening`)
-- [ ] Task 10: `/run/status` from the lock holder; cap counts runs; JWKS refetch throttle; HS256 confusion test
+- [x] Task 10: `/run/status` from the lock holder; cap counts runs; JWKS refetch throttle; HS256 confusion test
 
 ### Phase 6: Core hardening (`core-hardening`)
 - [ ] Task 11: `find_duplicate` on a per-batch `(id, vector)` projection; title-hash window; cosine near-duplicate ingest test
