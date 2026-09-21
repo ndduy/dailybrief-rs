@@ -90,7 +90,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 - [ ] Review with human
 
 ### Phase 7: Ops and ship (`ops-m2`)
-- [ ] Task 13: Vendored `install.sh` with sha256; `curl` and `zstd` purged from the runtime image
+- [x] Task 13: Vendored `install.sh` with sha256; `curl` and `zstd` purged from the runtime image
 - [ ] Task 14: `deny.toml` ↔ `CONSTRAINTS.md`; drop `harness.mcp_command`; tag `dailybrief-rs:r0`; `docs/runbook.md`; ADR 0015
 - [ ] Task 15: Ship rehearsal — one real `--max-turns 5` run (fixture captured), first live prune (dry-run first), TypeScript container removal (confirm first), ADRs 0012–0014 final, `CONSTRAINTS.md` measured
 

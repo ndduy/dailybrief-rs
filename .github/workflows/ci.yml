@@ -66,3 +66,6 @@ jobs:
           test "$(docker run --rm dailybrief-rs:runtime id -u)" = "1000"
           docker run --rm dailybrief-rs:runtime dailybrief --help >/dev/null
           docker run --rm dailybrief-rs:runtime claude --version
+          if docker run --rm dailybrief-rs:runtime sh -c 'command -v curl || command -v zstd'; then
+            echo "download tools left in the runtime image"; exit 1
+          fi

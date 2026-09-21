@@ -48,12 +48,28 @@ WORKDIR /app
 # ---- runtime: the service ----
 FROM debian:trixie-slim AS runtime
 ARG CLAUDE_CODE_VERSION
+# Claude Code at an exact version, installed for the non-root user by the *vendored* native
+# installer (ops/claude-install.sh, sha256-pinned; it verifies the binary's own checksum). It is
+# the subscription-billed harness; its only credential is the CLAUDE_CODE_OAUTH_TOKEN from .env
+# at run time. Never an ANTHROPIC_API_KEY. curl and zstd exist only for this step and are purged
+# after it. The version check runs against a throwaway config dir and the real config dir (the
+# dailybrief-claude volume adopts it) ships empty: Claude Code refuses to start when it finds
+# backups but no config file, which is what a build-time run leaves behind otherwise.
+COPY ops/claude-install.sh ops/claude-install.sh.sha256 /tmp/ops/
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl zstd libgomp1 libstdc++6 \
- && rm -rf /var/lib/apt/lists/* \
  && useradd -m -u 1000 -s /bin/bash app \
  && mkdir -p /app /data /home/app/.claude \
- && chown -R app:app /app /data /home/app
+ && chown -R app:app /app /data /home/app \
+ && (cd /tmp/ops && sha256sum -c claude-install.sh.sha256) \
+ && su app -s /bin/bash -c "export HOME=/home/app PATH=/home/app/.local/bin:\$PATH CLAUDE_CONFIG_DIR=/tmp/claude-verify \
+      && bash /tmp/ops/claude-install.sh ${CLAUDE_CODE_VERSION} \
+      && claude --version \
+      && rm -rf /tmp/claude-verify /home/app/.claude.json \
+      && find /home/app/.claude -mindepth 1 -delete" \
+ && apt-get purge -y curl zstd \
+ && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/* /tmp/ops
 USER app
 ENV HOME=/home/app \
     PATH=/home/app/.local/bin:/usr/local/bin:/usr/bin:/bin \
@@ -64,16 +80,6 @@ ENV HOME=/home/app \
     CLAUDE_CONFIG_DIR=/home/app/.claude \
     DISABLE_AUTOUPDATER=1 \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-# Claude Code at an exact version, installed for the non-root user by the native installer
-# (checksum-verified). It is the subscription-billed harness; its only credential is the
-# CLAUDE_CODE_OAUTH_TOKEN from .env at run time. Never an ANTHROPIC_API_KEY.
-# The version check runs against a throwaway config dir and the real config dir (the
-# dailybrief-claude volume adopts it) ships empty: Claude Code refuses to start when it finds
-# backups but no config file, which is what a build-time run leaves behind otherwise.
-RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" \
- && CLAUDE_CONFIG_DIR=/tmp/claude-verify claude --version \
- && rm -rf /tmp/claude-verify /home/app/.claude.json \
- && find /home/app/.claude -mindepth 1 -delete
 WORKDIR /app
 COPY --chown=app:app config ./config
 COPY --chown=app:app prompts ./prompts

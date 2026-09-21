@@ -129,22 +129,47 @@ fn bin_dc_runs_the_test_profile() {
 #[test]
 fn dockerfile_ships_an_empty_claude_config_dir() {
     let dockerfile = read("Dockerfile");
-    let env_at = dockerfile
-        .find("CLAUDE_CONFIG_DIR=/home/app/.claude")
-        .expect("CLAUDE_CONFIG_DIR is set");
     let install_at = dockerfile
-        .find("claude.ai/install.sh")
-        .expect("the native installer line");
+        .find("bash /tmp/ops/claude-install.sh")
+        .expect("the vendored installer line");
+    let verify_at = dockerfile
+        .find("CLAUDE_CONFIG_DIR=/tmp/claude-verify")
+        .expect("the version check uses a throwaway config dir");
     assert!(
-        env_at < install_at,
-        "CLAUDE_CONFIG_DIR must be set before Claude Code runs"
+        verify_at < install_at,
+        "the throwaway config dir is exported before Claude Code runs"
     );
-    assert!(
-        dockerfile.contains("CLAUDE_CONFIG_DIR=/tmp/claude-verify claude --version"),
-        "the version check uses a throwaway config dir"
-    );
+    assert!(dockerfile.contains("claude --version"));
     assert!(
         dockerfile.contains("find /home/app/.claude -mindepth 1 -delete"),
         "the config dir the volume adopts is shipped empty"
+    );
+}
+
+#[test]
+fn dockerfile_uses_the_vendored_installer_and_purges_download_tools() {
+    let dockerfile = read("Dockerfile");
+    assert!(
+        !dockerfile.contains("claude.ai/install.sh"),
+        "no installer fetched at build time"
+    );
+    assert!(dockerfile.contains("COPY ops/claude-install.sh ops/claude-install.sh.sha256"));
+    assert!(dockerfile.contains("sha256sum -c claude-install.sh.sha256"));
+    assert!(dockerfile.contains("bash /tmp/ops/claude-install.sh ${CLAUDE_CODE_VERSION}"));
+    assert!(dockerfile.contains("apt-get purge -y curl zstd"));
+    // The recorded hash matches the vendored script.
+    use sha2::{Digest, Sha256};
+    let script =
+        std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ops/claude-install.sh"))
+            .unwrap();
+    let actual: String = Sha256::digest(&script)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let recorded = read("ops/claude-install.sh.sha256");
+    assert_eq!(recorded.split_whitespace().next().unwrap(), actual);
+    assert_eq!(
+        recorded.split_whitespace().nth(1).unwrap(),
+        "claude-install.sh"
     );
 }

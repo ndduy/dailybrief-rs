@@ -259,12 +259,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `ops/claude-install.sh` is the installer downloaded on the day, with its sha256 in `ops/claude-install.sh.sha256` and in the Dockerfile; one `RUN` as root installs `curl zstd`, runs the vendored script as `app` for `CLAUDE_CODE_VERSION`, purges `curl zstd`, then `claude --version`. The CI image check gains `! command -v curl`.
 
 **Acceptance criteria:**
-- [ ] test (compose): `dockerfile_uses_the_vendored_installer_and_purges_download_tools` (no `claude.ai/install.sh` URL in the Dockerfile; `sha256sum -c`; `apt-get purge`).
-- [ ] `docker run --rm dailybrief-rs:runtime sh -c 'command -v curl'` fails; `claude --version` prints 2.1.274.
+- [x] test (compose): `dockerfile_uses_the_vendored_installer_and_purges_download_tools` (no installer URL; `sha256sum -c`; `apt-get purge`; the recorded hash matches the vendored script).
+- [x] `docker run --rm dailybrief-rs:runtime sh -c 'command -v curl'` fails (and zstd); `claude --version` prints 2.1.274; image 527 MB (was 555).
 
 **Verification:**
-- [ ] `docker compose --profile app build` and the two image checks
-- [ ] `bin/dc bin/check task`
+- [x] `docker compose --profile app build` and the two image checks
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Tasks 1–12 (last image change before ship)
 **Files likely touched:** `Dockerfile`, `ops/claude-install.sh`, `ops/claude-install.sh.sha256`, `.github/workflows/ci.yml`, `tests/it/compose.rs`
