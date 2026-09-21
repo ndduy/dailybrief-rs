@@ -530,7 +530,7 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 - [x] Smoke transcript `system/init` lists `mcp_servers: [{ name: "dailybrief" }]` and only `WebSearch` + the nine `mcp__dailybrief__*` tools (plus `StructuredOutput`, added by `--json-schema`); run `2026-09-18-9f96bb14`.
 - [x] Real run: `runs.status = success`, `digests` row with 24 + 6, `scan-transcript` exit 0; the `result` line attached (`docs/ship/r0-run-2026-09-18-9f4cc78e-result.json`).
 - [x] Rollback executed once and documented as one command in the ship note (`docs/ship/r0.md`).
-- [ ] Phone: `https://dailybrief.hundredclouds.com/` opens after OTP; one tap → `reads` row. **Blocked on `CF_ACCESS_AUD` in `.env`** (the service refuses to serve off loopback without it); the TypeScript stack is serving meanwhile.
+- [ ] Phone: `https://dailybrief.hundredclouds.com/` opens after OTP; one tap → `reads` row. Cut over 2026-09-21 (`CF_ACCESS_AUD` set); awaiting the tap.
 
 **Verification:**
 - [x] `spec/r0.md` §9 criteria 1–7, 10, 11 checked with evidence in `docs/ship/r0.md`; 8 and 9 open there as the tracking note
