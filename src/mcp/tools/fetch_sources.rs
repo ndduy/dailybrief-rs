@@ -1,8 +1,8 @@
 //! `fetch_sources()` → `{ fetched, newItems, perFeed: [{ id, source, status, newItems, error? }] }`.
-//! Idempotent within the process: the second call returns the first report without refetching.
+//! Idempotent within the process, concurrent calls included: the second call (even one that
+//! arrives mid-fetch) returns the first report without refetching.
 
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use rmcp::model::CallToolResult;
 
@@ -11,15 +11,9 @@ use crate::mcp::error::{ToolError, ok};
 use crate::mcp::server::DailyBriefServer;
 
 pub async fn run(s: &DailyBriefServer) -> Result<CallToolResult, ToolError> {
-    if s.fetched.swap(true, Ordering::SeqCst) {
-        let stored = s
-            .first_fetch_report
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        if let Some(report) = stored {
-            return Ok(ok(report));
-        }
+    let mut slot = s.fetch_report.lock().await;
+    if let Some(report) = slot.as_ref() {
+        return Ok(ok(report.clone()));
     }
     let ingester = Ingester {
         db: s.db.clone(),
@@ -33,9 +27,7 @@ pub async fn run(s: &DailyBriefServer) -> Result<CallToolResult, ToolError> {
         .await
         .map_err(|e| ToolError::Internal(e.to_string()))?;
     let value = serde_json::to_value(&report).map_err(|e| ToolError::Internal(e.to_string()))?;
-    *s.first_fetch_report
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(value.clone());
+    *slot = Some(value.clone());
     Ok(ok(value))
 }
 
@@ -74,5 +66,39 @@ mod tests {
         let second = structured(&h.call("fetch_sources", json!({})).await);
         assert_eq!(first, second, "second call returns the first report");
         server.verify().await; // exactly one request reached the feed
+    }
+
+    /// Two calls in flight at once (a harness that parallelises tool calls) fetch once.
+    #[tokio::test]
+    async fn fetch_sources_runs_once_under_concurrent_calls() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/rss"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_millis(200))
+                    .set_body_string(
+                        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>t</title><link>x</link><description>d</description></channel></rss>",
+                    ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let feeds = vec![Feed {
+            id: "only".into(),
+            url: format!("{}/rss", server.uri()),
+            title: "Only".into(),
+            weight: 1.0,
+            enabled: true,
+        }];
+        let h = Harness::start(server_with_feeds(Db::open_in_memory().unwrap(), feeds)).await;
+        let (a, b) = tokio::join!(
+            h.call("fetch_sources", json!({})),
+            h.call("fetch_sources", json!({}))
+        );
+        let (a, b) = (structured(&a), structured(&b));
+        assert_eq!(a["fetched"], 1);
+        assert_eq!(a, b, "both callers see the same report");
+        server.verify().await; // one request, not two
     }
 }

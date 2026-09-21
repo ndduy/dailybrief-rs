@@ -1,5 +1,6 @@
 //! A harness "success" is not a digest (`SPEC.md` §3): the run counts only when the final message
-//! validates against `DigestOutput`, a digest row exists for this run, and the ids agree.
+//! parses as `DigestOutput` (the JSON Schema itself is enforced by `--json-schema` in the
+//! harness), a digest row exists for this run, and the ids agree.
 
 use super::types::RunOutcome;
 use crate::db::{Connection, DbError, repo};
@@ -19,7 +20,7 @@ pub fn verify_digest_outcome(
         .clone()
         .and_then(|v| serde_json::from_value::<DigestOutput>(v).ok());
     let Some(output) = parsed else {
-        return Ok(Err("final message did not match schemas/digest.json".into()));
+        return Ok(Err("final message did not parse as DigestOutput (schemas/digest.json is enforced by the harness)".into()));
     };
     let Some(digest) = repo::get_digest_by_run(conn, run_id)? else {
         return Ok(Err(
@@ -128,12 +129,12 @@ mod tests {
         assert_eq!(
             db.with(|c| verify_digest_outcome(c, RUN, &success(Some(json!({ "nope": 1 })))))
                 .unwrap(),
-            Err("final message did not match schemas/digest.json".to_string())
+            Err("final message did not parse as DigestOutput (schemas/digest.json is enforced by the harness)".to_string())
         );
         assert_eq!(
             db.with(|c| verify_digest_outcome(c, RUN, &success(None)))
                 .unwrap(),
-            Err("final message did not match schemas/digest.json".to_string())
+            Err("final message did not parse as DigestOutput (schemas/digest.json is enforced by the harness)".to_string())
         );
         assert_eq!(
             db.with(|c| verify_digest_outcome(c, RUN, &success(Some(output("2026-09-17-y")))))
@@ -149,6 +150,34 @@ mod tests {
                 .with(|c| verify_digest_outcome(c, RUN, &success(Some(output("2026-09-17-x")))))
                 .unwrap(),
             Err("harness reported success but no digest was published for this run".to_string())
+        );
+    }
+
+    #[test]
+    fn verify_reason_names_the_parse() {
+        let db = crate::db::Db::open_in_memory().unwrap();
+        let outcome = RunOutcome::Success {
+            result: ResultEvent {
+                subtype: "success".into(),
+                is_error: false,
+                duration_ms: None,
+                duration_api_ms: None,
+                num_turns: None,
+                result: None,
+                session_id: None,
+                total_cost_usd: None,
+                usage: None,
+                structured_output: Some(serde_json::json!({ "not": "a digest" })),
+            },
+            init: None,
+        };
+        let reason = db
+            .with(|c| verify_digest_outcome(c, "r", &outcome))
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            reason.starts_with("final message did not parse as DigestOutput"),
+            "{reason}"
         );
     }
 }

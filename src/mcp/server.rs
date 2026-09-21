@@ -3,7 +3,7 @@
 //! failure (including a panic) into an `isError` result.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8};
+use std::sync::atomic::AtomicU8;
 
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
@@ -33,9 +33,10 @@ pub struct DailyBriefServer {
     pub embedder: Arc<dyn Embedder>,
     pub client: Http,
     pub now: fn() -> DateTime<Utc>,
-    pub fetched: Arc<AtomicBool>,
     pub publish_rejections: Arc<AtomicU8>,
-    pub first_fetch_report: Arc<std::sync::Mutex<Option<Value>>>,
+    /// The first `fetch_sources` report; the lock is held across the ingest, so a concurrent
+    /// second call waits and gets the same report instead of fetching again.
+    pub fetch_report: Arc<tokio::sync::Mutex<Option<Value>>>,
 }
 
 impl DailyBriefServer {
@@ -56,9 +57,8 @@ impl DailyBriefServer {
             embedder,
             client,
             now,
-            fetched: Arc::new(AtomicBool::new(false)),
             publish_rejections: Arc::new(AtomicU8::new(0)),
-            first_fetch_report: Arc::new(std::sync::Mutex::new(None)),
+            fetch_report: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 }

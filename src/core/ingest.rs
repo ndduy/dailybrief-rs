@@ -267,6 +267,8 @@ impl Ingester {
             else {
                 continue;
             };
+            // ADR 0014's measurement: which parser produced this item.
+            tracing::info!(feed = %feed.id, extractor = article.extractor.as_str(), words = article.word_count, "extracted");
             // The feed's title wins: entries without one were dropped by the parser.
             let title = entry.title.clone();
             pending.push(repo::NewItem {

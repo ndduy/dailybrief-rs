@@ -6,12 +6,30 @@ use dom_smoothie::{Config, Readability, TextMode};
 /// Fewer words than this and the page is not an article (a link directory, an error page).
 pub const MIN_WORDS: usize = 20;
 
+/// Which parser produced the text; logged per stored item so ADR 0014 can measure how often
+/// the fallback rescues an article.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Extractor {
+    DomSmoothie,
+    Readability,
+}
+
+impl Extractor {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DomSmoothie => "dom_smoothie",
+            Self::Readability => "readability",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Extracted {
     pub title: String,
     pub byline: Option<String>,
     pub text: String,
     pub word_count: usize,
+    pub extractor: Extractor,
 }
 
 /// Words are whitespace-separated tokens; the same rule caps summaries (`SPEC.md` §4).
@@ -42,10 +60,11 @@ pub fn normalize_text(raw: &str) -> String {
 }
 
 /// Extracts the article; `None` when neither extractor finds at least `MIN_WORDS` words.
+/// `dom_smoothie` first; `readability` only when it found nothing usable.
 pub fn extract(html: &str, url: Option<&str>) -> Option<Extracted> {
     primary(html, url)
-        .or_else(|| fallback(html, url))
         .filter(|e| e.word_count >= MIN_WORDS)
+        .or_else(|| fallback(html, url).filter(|e| e.word_count >= MIN_WORDS))
 }
 
 fn primary(html: &str, url: Option<&str>) -> Option<Extracted> {
@@ -64,10 +83,12 @@ fn primary(html: &str, url: Option<&str>) -> Option<Extracted> {
             .filter(|b| !b.is_empty()),
         word_count: count_words(&text),
         text,
+        extractor: Extractor::DomSmoothie,
     })
 }
 
-fn fallback(html: &str, url: Option<&str>) -> Option<Extracted> {
+/// The `readability` crate over the same page (`pub` for the fallback's own test).
+pub fn fallback(html: &str, url: Option<&str>) -> Option<Extracted> {
     let base = url::Url::parse(url.unwrap_or("https://localhost/")).ok()?;
     let mut cursor = std::io::Cursor::new(html.as_bytes());
     let product = readability::extractor::extract(&mut cursor, &base).ok()?;
@@ -77,6 +98,7 @@ fn fallback(html: &str, url: Option<&str>) -> Option<Extracted> {
         byline: None,
         word_count: count_words(&text),
         text,
+        extractor: Extractor::Readability,
     })
 }
 
@@ -128,5 +150,20 @@ mod tests {
         let e = extract(LONG, None).unwrap();
         assert!(!e.text.contains("\n\n\n"));
         assert!(!e.text.lines().any(|l| l.ends_with(' ')));
+    }
+
+    #[test]
+    fn extract_reports_its_extractor() {
+        let e = extract(LONG, Some("https://blog.example/long")).unwrap();
+        assert_eq!(e.extractor, Extractor::DomSmoothie);
+        assert_eq!(e.extractor.as_str(), "dom_smoothie");
+    }
+
+    #[test]
+    fn fallback_extracts_short_article() {
+        let e = fallback(SHORT, Some("https://blog.example/short")).unwrap();
+        assert_eq!(e.extractor, Extractor::Readability);
+        assert!(!e.text.is_empty());
+        assert!(e.word_count >= MIN_WORDS, "{}", e.word_count);
     }
 }

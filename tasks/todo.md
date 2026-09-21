@@ -233,13 +233,13 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** A `tokio::sync::Mutex<Option<Value>>` held across the ingest makes a concurrent second `fetch_sources` wait and return the first report. `verify`'s failure reason says "final message did not parse as DigestOutput" (what is checked). `core::extract` returns which extractor produced the text; ingest logs `extractor = dom_smoothie | readability` per stored item and `fetch` reports the counts per run so the ADR 0014 measurement accrues from deployment.
 
 **Acceptance criteria:**
-- [ ] test: `fetch_sources_runs_once_under_concurrent_calls` (two simultaneous calls, one mock hit, identical reports).
-- [ ] test: `verify_reason_names_the_parse` (the wording); `extract_reports_its_extractor` (long fixture → dom_smoothie; a fixture only readability handles → readability, or the fallback test from the review list).
-- [ ] `docs/adr/0014-readability.md` drafted with the measurement method and the 2 % threshold.
+- [x] test: `fetch_sources_runs_once_under_concurrent_calls` (two simultaneous calls against a 200 ms mock, one hit, identical reports; the report slot is a `tokio::sync::Mutex` held across the ingest).
+- [x] test: `verify_reason_names_the_parse`; `extract_reports_its_extractor` (long fixture → dom_smoothie); `fallback_extracts_short_article` (readability over the short fixture).
+- [x] `docs/adr/0014-readability.md` drafted: every stored item logs `extracted{feed, extractor, words}`; the count over the deploy-to-ship window decides at 2 %.
 
 **Verification:**
-- [ ] `bin/dc cargo test mcp extract verify`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test mcp extract verify`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 11
 **Files likely touched:** `src/mcp/server.rs`, `src/mcp/tools/fetch_sources.rs`, `src/harness/verify.rs`, `src/core/extract.rs`, `src/core/ingest.rs`, `docs/adr/0014-readability.md`

@@ -82,7 +82,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Phase 6: Core hardening (`core-hardening`)
 - [x] Task 11: `find_duplicate` on a per-batch `(id, vector)` projection; title-hash window; cosine near-duplicate ingest test
-- [ ] Task 12: `fetch_sources` idempotent under concurrent calls; `verify` wording; extractor instrumentation (ADR 0014 measurement starts)
+- [x] Task 12: `fetch_sources` idempotent under concurrent calls; `verify` wording; extractor instrumentation (ADR 0014 measurement starts)
 
 ### Checkpoint D
 - [ ] `bin/check full` green; every §9 #4 test name exists and passes except the three that belong to Tasks 13–15
