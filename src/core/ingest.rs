@@ -18,6 +18,7 @@ use super::fetch::{Entry, FeedFetch, fetch_feed};
 use super::http::get_text;
 use super::time::{days_ago_iso, to_iso};
 use crate::config::{Config, Feed};
+use crate::core::http::Http;
 use crate::db::{Db, DbError, repo};
 
 /// How much of an article the embedding sees (characters); BGE-small truncates at 512 tokens anyway.
@@ -66,7 +67,7 @@ pub enum IngestError {
 pub struct Ingester {
     pub db: Db,
     pub config: Config,
-    pub client: reqwest::Client,
+    pub client: Http,
     pub embedder: Arc<dyn Embedder>,
     pub now: fn() -> DateTime<Utc>,
 }
@@ -356,6 +357,7 @@ mod tests {
         let mut c = load_config(&Env::from_lookup(|_| None).unwrap()).unwrap();
         c.ingest.total_budget_ms = budget_ms;
         c.ingest.request_timeout_ms = 2000;
+        c.ingest.allow_loopback = true;
         c
     }
 

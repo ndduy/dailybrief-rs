@@ -29,6 +29,7 @@ total_budget_ms = 120000
 body_max_bytes = 2097152
 max_redirects = 3
 dedupe_cosine = 0.92
+# allow_loopback = false  # never in production: private, link-local, CGNAT and loopback targets are refused, redirects included
 
 [embeddings]
 model = "Xenova/bge-small-en-v1.5"

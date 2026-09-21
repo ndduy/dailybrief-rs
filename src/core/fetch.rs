@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 
-use super::http::{HttpError, check_scheme, read_capped};
+use super::http::{Http, HttpError, read_capped};
 
 /// One feed entry worth ingesting: it has a link and a title.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +31,7 @@ pub enum FeedFetch {
 
 /// GET the feed with `If-None-Match` / `If-Modified-Since` and parse it.
 pub async fn fetch_feed(
-    client: &reqwest::Client,
+    client: &Http,
     url: &str,
     etag: Option<&str>,
     last_modified: Option<&str>,
@@ -44,14 +44,13 @@ pub async fn fetch_feed(
 }
 
 async fn fetch_feed_inner(
-    client: &reqwest::Client,
+    client: &Http,
     url: &str,
     etag: Option<&str>,
     last_modified: Option<&str>,
     body_max_bytes: u64,
 ) -> Result<FeedFetch, HttpError> {
-    check_scheme(url)?;
-    let mut req = client.get(url);
+    let mut req = client.get(url)?;
     if let Some(e) = etag {
         req = req.header(reqwest::header::IF_NONE_MATCH, e);
     }
@@ -141,7 +140,7 @@ mod tests {
     const RSS2: &str = include_str!("../../tests/fixtures/feeds/rss2.xml");
     const ATOM: &str = include_str!("../../tests/fixtures/feeds/atom.xml");
 
-    fn test_client() -> reqwest::Client {
+    fn test_client() -> Http {
         client(&crate::config::Ingest {
             concurrency: 2,
             request_timeout_ms: 2000,
@@ -149,6 +148,7 @@ mod tests {
             body_max_bytes: 2 * 1024 * 1024,
             max_redirects: 3,
             dedupe_cosine: 0.92,
+            allow_loopback: true,
         })
         .unwrap()
     }

@@ -14,6 +14,7 @@ use serde_json::Value;
 
 use crate::config::{Config, Feed};
 use crate::core::embed::Embedder;
+use crate::core::http::Http;
 use crate::db::Db;
 
 use super::error::ToolError;
@@ -30,7 +31,7 @@ pub struct DailyBriefServer {
     pub feeds: Vec<Feed>,
     pub run_id: String,
     pub embedder: Arc<dyn Embedder>,
-    pub client: reqwest::Client,
+    pub client: Http,
     pub now: fn() -> DateTime<Utc>,
     pub fetched: Arc<AtomicBool>,
     pub publish_rejections: Arc<AtomicU8>,
@@ -44,7 +45,7 @@ impl DailyBriefServer {
         feeds: Vec<Feed>,
         run_id: String,
         embedder: Arc<dyn Embedder>,
-        client: reqwest::Client,
+        client: Http,
         now: fn() -> DateTime<Utc>,
     ) -> Self {
         Self {
@@ -201,6 +202,9 @@ pub(crate) mod testkit {
     /// A server whose `fetch_sources` targets `feeds` (tests point them at wiremock).
     pub fn server_with_feeds(db: Db, feeds: Vec<Feed>) -> DailyBriefServer {
         let loaded = load_all(&Env::from_lookup(|_| None).unwrap()).unwrap();
+        // The tool tests fetch from a wiremock on 127.0.0.1.
+        let mut loaded = loaded;
+        loaded.config.ingest.allow_loopback = true;
         DailyBriefServer::new(
             db,
             loaded.config.clone(),

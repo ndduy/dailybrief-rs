@@ -103,6 +103,9 @@ pub struct IngestFile {
     pub max_redirects: u32,
     #[serde(default = "d_dedupe_cosine")]
     pub dedupe_cosine: f32,
+    /// Tests only: lets the fetcher reach a mock on 127.0.0.1. Production stays `false`.
+    #[serde(default)]
+    pub allow_loopback: bool,
 }
 impl Default for IngestFile {
     fn default() -> Self {
@@ -113,6 +116,7 @@ impl Default for IngestFile {
             body_max_bytes: d_body_max_bytes(),
             max_redirects: d_max_redirects(),
             dedupe_cosine: d_dedupe_cosine(),
+            allow_loopback: false,
         }
     }
 }
@@ -376,6 +380,8 @@ pub struct Ingest {
     pub body_max_bytes: u64,
     pub max_redirects: u32,
     pub dedupe_cosine: f32,
+    /// Only tests set this (see the file field of the same name).
+    pub allow_loopback: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -553,6 +559,7 @@ impl TryFrom<ConfigFile> for Config {
                 body_max_bytes: f.ingest.body_max_bytes,
                 max_redirects: f.ingest.max_redirects,
                 dedupe_cosine: f.ingest.dedupe_cosine,
+                allow_loopback: f.ingest.allow_loopback,
             },
             embeddings: Embeddings {
                 model: f.embeddings.model,
