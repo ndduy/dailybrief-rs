@@ -19,7 +19,8 @@ pub const INDEX_LIMIT: i64 = 30;
 const CSS: &str = r#"
 table{border-collapse:collapse;width:100%;font-size:.9rem}td,th{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
 .log{list-style:none;padding:0;margin:0}.log li{padding:.35rem 0;border-bottom:1px solid var(--line);font-size:.9rem}.log .seq{color:var(--muted);display:inline-block;min-width:3rem}.log .kind{display:inline-block;min-width:5.5rem;font-weight:600}.log details{margin-top:.2rem}.log summary{cursor:pointer;color:var(--muted)}.log pre{margin:.3rem 0 0;max-height:24rem;overflow:auto}
-.status-success{color:#2a7}.status-failed,.status-killed{color:#c33}.status-running{color:#c80}
+.status-success{color:#1a7a4a}.status-failed,.status-killed{color:#b32424}.status-running{color:#9a5b00}
+@media(prefers-color-scheme:dark){.status-success{color:#5c9}.status-failed,.status-killed{color:#f66}.status-running{color:#fb4}}
 "#;
 
 fn truncate(s: &str, max: usize) -> String {
