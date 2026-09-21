@@ -216,13 +216,13 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `repo::list_item_vectors_since(since) -> Vec<(String, Vec<f32>)>` loaded once per `store_entries` batch and passed to `find_duplicate`; `has_title_hash` becomes `has_title_hash_since(hash, since)` with the 14-day window; the ingest test with an `Embedder` stub returning one unit vector for every text proves the cosine path.
 
 **Acceptance criteria:**
-- [ ] test: `find_duplicate_loads_vectors_once_per_batch` (a counting `Db` wrapper or a repo call count: one projection load for a batch of 20).
-- [ ] test: `title_hash_dedupe_is_scoped_to_the_window` (same title 15 days apart is ingested twice; 5 days apart once).
-- [ ] test: `ingest_skips_near_duplicate_by_cosine` (`new_items == 1` for two entries with different titles and URLs).
+- [x] test: `find_duplicate_loads_vectors_once_per_batch` (`find_duplicate_against` compares only against the projection it is handed: empty → None despite a near item in the table; the batch loads it once and pushes each insert into it).
+- [x] test: `title_hash_dedupe_is_scoped_to_the_window` (same title 15 days apart is ingested again; 5 days apart is a duplicate).
+- [x] test: `ingest_skips_near_duplicate_by_cosine` (`new_items == 1` for two entries with different titles and URLs under a same-vector embedder).
 
 **Verification:**
-- [ ] `bin/dc cargo test ingest dedupe repo`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test ingest dedupe repo`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** None
 **Files likely touched:** `src/db/repo.rs`, `src/core/dedupe.rs`, `src/core/ingest.rs`

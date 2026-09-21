@@ -11,7 +11,9 @@ use serde::Serialize;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use super::dedupe::{Duplicate, canonical_url, content_hash, find_duplicate, item_id, title_hash};
+use super::dedupe::{
+    Duplicate, canonical_url, content_hash, find_duplicate_against, item_id, title_hash,
+};
 use super::embed::Embedder;
 use super::extract::extract;
 use super::fetch::{Entry, FeedFetch, fetch_feed};
@@ -237,14 +239,16 @@ impl Ingester {
         now: DateTime<Utc>,
     ) -> Result<usize, IngestError> {
         let mut pending: Vec<repo::NewItem> = Vec::new();
+        let since = days_ago_iso(now, DEDUPE_DAYS);
         for entry in entries {
             let canonical = canonical_url(&entry.link);
             let th = title_hash(&entry.title);
-            let (c, t) = (canonical.clone(), th.clone());
+            let (c, t, window) = (canonical.clone(), th.clone(), since.clone());
             let seen = self
                 .db
                 .call(move |conn| {
-                    Ok(repo::has_canonical_url(conn, &c)? || repo::has_title_hash(conn, &t)?)
+                    Ok(repo::has_canonical_url(conn, &c)?
+                        || repo::has_title_hash_since(conn, &t, &window)?)
                 })
                 .await?;
             if seen {
@@ -298,24 +302,30 @@ impl Ingester {
             item.vector = Some(v);
         }
         let threshold = self.config.ingest.dedupe_cosine;
-        let since = days_ago_iso(now, DEDUPE_DAYS);
         let stored = self
             .db
             .call(move |conn| {
+                // The `(id, vector)` projection is loaded once per batch (not once per item)
+                // and grows with each insert, so near-duplicates inside the batch are caught.
+                let mut recent = repo::list_item_vectors_since(conn, &since)?;
                 let mut stored = 0;
                 for item in pending {
-                    let dup = find_duplicate(
+                    let dup = find_duplicate_against(
                         conn,
                         &item.canonical_url,
                         &item.title_hash,
                         item.vector.as_deref(),
                         threshold,
                         &since,
+                        &recent,
                     )?;
                     if let Some(Duplicate::Url | Duplicate::Title | Duplicate::Near { .. }) = dup {
                         continue;
                     }
                     repo::insert_item(conn, &item)?;
+                    if let Some(v) = &item.vector {
+                        recent.push((item.id.clone(), v.clone()));
+                    }
                     stored += 1;
                 }
                 Ok(stored)
@@ -631,5 +641,122 @@ mod tests {
         let long = "ô".repeat(5000);
         let t = embed_text("T", &long);
         assert_eq!(t.chars().count(), 2 + EMBED_CHARS);
+    }
+
+    /// An embedder that maps every text to the same unit vector: the cosine path in one stroke.
+    struct SameVector;
+    impl crate::core::embed::Embedder for SameVector {
+        fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, crate::core::embed::EmbedError> {
+            let mut v = vec![0.0f32; crate::core::vector::DIMENSIONS];
+            v[0] = 1.0;
+            Ok(texts.iter().map(|_| v.clone()).collect())
+        }
+    }
+
+    #[tokio::test]
+    async fn ingest_skips_near_duplicate_by_cosine() {
+        let server = MockServer::start().await;
+        let u = server.uri();
+        mount(
+            &server,
+            "/rss",
+            ResponseTemplate::new(200).set_body_string(rss(&[
+                ("First take", &format!("{u}/a")),
+                ("Second take", &format!("{u}/b")),
+            ])),
+        )
+        .await;
+        mount(
+            &server,
+            "/a",
+            ResponseTemplate::new(200).set_body_string(html_with_title("First take")),
+        )
+        .await;
+        mount(
+            &server,
+            "/b",
+            ResponseTemplate::new(200).set_body_string(html_with_title("Second take")),
+        )
+        .await;
+        let config = config(10_000);
+        let ing = Ingester {
+            db: Db::open_in_memory().unwrap(),
+            client: client(&config.ingest).unwrap(),
+            config,
+            embedder: Arc::new(SameVector),
+            now: fixed_now,
+        };
+        let report = ing.run(&[feed("a", format!("{u}/rss"))]).await.unwrap();
+        assert_eq!(
+            report.new_items, 1,
+            "the second entry is a near-duplicate of the first"
+        );
+        let items = ing
+            .db
+            .with(|c| repo::list_items_since(c, "2026-01-01T00:00:00.000Z"))
+            .unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "First take");
+    }
+
+    /// The same title seen 15 days ago is new again; seen 5 days ago it is still a duplicate.
+    #[tokio::test]
+    async fn title_hash_dedupe_is_scoped_to_the_window() {
+        let server = MockServer::start().await;
+        let u = server.uri();
+        mount(
+            &server,
+            "/rss",
+            ResponseTemplate::new(200)
+                .set_body_string(rss(&[("Weekly links", &format!("{u}/this-week"))])),
+        )
+        .await;
+        mount(
+            &server,
+            "/this-week",
+            ResponseTemplate::new(200).set_body_string(html_with_title("Weekly links")),
+        )
+        .await;
+        let old_item = |db: &Db, id: &str, days: i64| {
+            db.with(|c| {
+                repo::upsert_source(c, &feed("a", format!("{u}/rss")))?;
+                repo::insert_item(
+                    c,
+                    &repo::NewItem {
+                        id: id.into(),
+                        source_id: "a".into(),
+                        url: format!("{u}/{id}"),
+                        canonical_url: format!("{u}/{id}"),
+                        title: "Weekly links".into(),
+                        author: None,
+                        published_at: None,
+                        fetched_at: crate::core::time::to_iso(
+                            fixed_now() - chrono::Duration::days(days),
+                        ),
+                        text: "older links".into(),
+                        word_count: 2,
+                        content_hash: format!("c-{id}"),
+                        title_hash: title_hash("Weekly links"),
+                        vector: None,
+                    },
+                )
+            })
+            .unwrap();
+        };
+        let ing = ingester(config(10_000));
+        old_item(&ing.db, "fifteen-days-ago", 15);
+        let report = ing.run(&[feed("a", format!("{u}/rss"))]).await.unwrap();
+        assert_eq!(
+            report.new_items, 1,
+            "a title from outside the window is new again"
+        );
+
+        let ing = ingester(config(10_000));
+        old_item(&ing.db, "five-days-ago", 5);
+        let report = ing.run(&[feed("a", format!("{u}/rss"))]).await.unwrap();
+        assert_eq!(
+            report.new_items, 0,
+            "a title from inside the window is a duplicate"
+        );
     }
 }

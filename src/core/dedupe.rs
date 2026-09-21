@@ -94,8 +94,43 @@ pub enum Duplicate {
     Near { of: String, score: f32 },
 }
 
-/// URL first, then title, then the nearest stored vector above `threshold` among items fetched
-/// since `since`. `None` when the candidate is new (or has no vector for the cosine step).
+/// URL first, then title (within the window), then the nearest vector above `threshold` in
+/// `recent`, the `(id, vector)` projection of items fetched since `since` that the caller loads
+/// once per batch (`repo::list_item_vectors_since`). `None` when the candidate is new (or has
+/// no vector for the cosine step).
+pub fn find_duplicate_against(
+    conn: &Connection,
+    canonical: &str,
+    title_hash: &str,
+    vector: Option<&[f32]>,
+    threshold: f32,
+    since: &str,
+    recent: &[(String, Vec<f32>)],
+) -> Result<Option<Duplicate>, DbError> {
+    if repo::has_canonical_url(conn, canonical)? {
+        return Ok(Some(Duplicate::Url));
+    }
+    if repo::has_title_hash_since(conn, title_hash, since)? {
+        return Ok(Some(Duplicate::Title));
+    }
+    let Some(v) = vector else {
+        return Ok(None);
+    };
+    let mut best: Option<(&str, f32)> = None;
+    for (id, stored) in recent {
+        let score = cosine(v, stored);
+        if score > threshold && best.is_none_or(|(_, s)| score > s) {
+            best = Some((id.as_str(), score));
+        }
+    }
+    Ok(best.map(|(of, score)| Duplicate::Near {
+        of: of.to_string(),
+        score,
+    }))
+}
+
+/// One candidate against the database: loads the projection itself. Batches use
+/// [`find_duplicate_against`] with one load.
 pub fn find_duplicate(
     conn: &Connection,
     canonical: &str,
@@ -104,26 +139,14 @@ pub fn find_duplicate(
     threshold: f32,
     since: &str,
 ) -> Result<Option<Duplicate>, DbError> {
-    if repo::has_canonical_url(conn, canonical)? {
-        return Ok(Some(Duplicate::Url));
-    }
-    if repo::has_title_hash(conn, title_hash)? {
-        return Ok(Some(Duplicate::Title));
-    }
-    let Some(v) = vector else {
-        return Ok(None);
+    let recent = if vector.is_some() {
+        repo::list_item_vectors_since(conn, since)?
+    } else {
+        Vec::new()
     };
-    let mut best: Option<(String, f32)> = None;
-    for item in repo::list_items_since(conn, since)? {
-        let Some(stored) = &item.vector else {
-            continue;
-        };
-        let score = cosine(v, stored);
-        if score > threshold && best.as_ref().is_none_or(|(_, s)| score > *s) {
-            best = Some((item.id, score));
-        }
-    }
-    Ok(best.map(|(of, score)| Duplicate::Near { of, score }))
+    find_duplicate_against(
+        conn, canonical, title_hash, vector, threshold, since, &recent,
+    )
 }
 
 #[cfg(test)]
@@ -342,5 +365,41 @@ mod tests {
             })
             .unwrap();
         assert_eq!(d, None);
+    }
+
+    /// The batch variant compares only against the projection it is handed, so one load per
+    /// batch is the whole cost; the per-candidate wrapper loads for itself.
+    #[test]
+    fn find_duplicate_loads_vectors_once_per_batch() {
+        let db = Db::open_in_memory().unwrap();
+        seed(&db, Some(v(1.0, 0.0)), RECENT);
+        let same = v(1.0, 0.0);
+        let (without, with) = db
+            .with(|c| {
+                let recent = repo::list_item_vectors_since(c, SINCE)?;
+                assert_eq!(recent.len(), 1);
+                let without = find_duplicate_against(
+                    c,
+                    "https://x.example/new",
+                    "other",
+                    Some(&same),
+                    0.92,
+                    SINCE,
+                    &[],
+                )?;
+                let with = find_duplicate_against(
+                    c,
+                    "https://x.example/new",
+                    "other",
+                    Some(&same),
+                    0.92,
+                    SINCE,
+                    &recent,
+                )?;
+                Ok((without, with))
+            })
+            .unwrap();
+        assert_eq!(without, None, "no query behind the caller's back");
+        assert!(matches!(with, Some(Duplicate::Near { ref of, .. }) if of == "existing"));
     }
 }

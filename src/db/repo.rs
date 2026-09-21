@@ -237,6 +237,41 @@ pub fn has_title_hash(conn: &Connection, title_hash: &str) -> Result<bool, DbErr
         .is_some())
 }
 
+/// Like `has_title_hash`, within the dedupe window: a recurring title ("Weekly links") is a
+/// duplicate for 14 days, not forever.
+pub fn has_title_hash_since(
+    conn: &Connection,
+    title_hash: &str,
+    since: &str,
+) -> Result<bool, DbError> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM items WHERE title_hash = ?1 AND fetched_at >= ?2",
+            params![title_hash, since],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+/// `(id, vector)` for every item fetched at or after `since` that has a vector: the projection
+/// the cosine dedupe compares against, loaded once per ingest batch.
+pub fn list_item_vectors_since(
+    conn: &Connection,
+    since: &str,
+) -> Result<Vec<(String, Vec<f32>)>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, vector FROM items WHERE fetched_at >= ?1 AND vector IS NOT NULL ORDER BY id",
+    )?;
+    let rows = stmt
+        .query_map([since], |r| {
+            let id: String = r.get(0)?;
+            Ok((id, decode_vector(r, "vector")?.unwrap_or_default()))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 /// Items fetched at or after `since` (stored-form timestamp), newest first, then id.
 pub fn list_items_since(conn: &Connection, since: &str) -> Result<Vec<Item>, DbError> {
     let mut stmt = conn.prepare(&format!(
