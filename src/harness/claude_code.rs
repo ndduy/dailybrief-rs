@@ -291,8 +291,23 @@ impl ClaudeCodeAdapter {
         let mut seq: u64 = 0;
         let mut sink_closed = false;
         let read_stdout = async {
-            let mut lines = BufReader::new(stdout).lines();
-            while let Ok(Some(raw)) = lines.next_line().await {
+            // Bytes, not `lines()`: one invalid UTF-8 byte must not end the read loop (and with
+            // it the run); the line is stored lossily instead.
+            let mut reader = BufReader::new(stdout);
+            let mut buf: Vec<u8> = Vec::new();
+            loop {
+                buf.clear();
+                match reader.read_until(b'\n', &mut buf).await {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(run_id = %req.run_id, error = %e, "stdout read failed; treating as EOF");
+                        break;
+                    }
+                }
+                let raw = String::from_utf8_lossy(&buf)
+                    .trim_end_matches(['\n', '\r'])
+                    .to_string();
                 if raw.trim().is_empty() {
                     continue;
                 }
@@ -332,7 +347,10 @@ impl ClaudeCodeAdapter {
             };
         };
         let exit_code = status.and_then(|s| s.code());
-        let stderr_tail = drain(&mut stderr_task, self.kill_grace).await;
+        let stderr_tail = redact(
+            &drain(&mut stderr_task, self.kill_grace).await,
+            &self.secrets(),
+        );
         match result {
             Some(r) if r.subtype == "success" && !r.is_error => {
                 RunOutcome::Success { result: r, init }
@@ -372,6 +390,45 @@ impl ClaudeCodeAdapter {
             },
         }
     }
+}
+
+impl ClaudeCodeAdapter {
+    /// Values that must never be stored or shown: the subscription token this adapter spawns with.
+    fn secrets(&self) -> Vec<String> {
+        self.env
+            .get("CLAUDE_CODE_OAUTH_TOKEN")
+            .filter(|v| v.len() >= MIN_SECRET_CHARS)
+            .cloned()
+            .into_iter()
+            .collect()
+    }
+}
+
+/// Secrets shorter than this are not worth matching (and would shred ordinary text).
+const MIN_SECRET_CHARS: usize = 8;
+const REDACTED: &str = "[redacted]";
+
+/// Replaces every literal secret and every `sk-ant-…` token run with `[redacted]`.
+pub fn redact(text: &str, secrets: &[String]) -> String {
+    let mut out = text.to_string();
+    for s in secrets.iter().filter(|s| s.len() >= MIN_SECRET_CHARS) {
+        out = out.replace(s.as_str(), REDACTED);
+    }
+    const PREFIX: &str = "sk-ant-";
+    let mut result = String::with_capacity(out.len());
+    let mut rest = out.as_str();
+    while let Some(at) = rest.find(PREFIX) {
+        result.push_str(&rest[..at]);
+        result.push_str(REDACTED);
+        let after = &rest[at + PREFIX.len()..];
+        let run = after
+            .char_indices()
+            .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '_' || *c == '-'))
+            .map_or(after.len(), |(i, _)| i);
+        rest = &after[run..];
+    }
+    result.push_str(rest);
+    result
 }
 
 /// The stderr tail, or an empty string if the drain task does not end within `grace` (a
@@ -446,6 +503,17 @@ mod tests {
             m.insert((*k).to_string(), (*v).to_string());
         }
         m
+    }
+
+    #[test]
+    fn redact_replaces_literal_secrets_and_sk_ant_runs_only() {
+        let secrets = vec!["fake-token-value".to_string(), "short".to_string()];
+        let text = "token fake-token-value and sk-ant-oat01-Ab_c-9 then short text; sk-ant- alone";
+        assert_eq!(
+            redact(text, &secrets),
+            "token [redacted] and [redacted] then short text; [redacted] alone"
+        );
+        assert_eq!(redact("nothing here", &secrets), "nothing here");
     }
 
     #[test]

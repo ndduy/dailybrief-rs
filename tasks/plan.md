@@ -66,7 +66,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 - [ ] Review with human
 
 ### Phase 3: Harness hardening (`harness-hardening`)
-- [ ] Task 6: Stderr redaction before storage; `scan-transcript` covers `runs.error`; lossy stdout lines
+- [x] Task 6: Stderr redaction before storage; `scan-transcript` covers `runs.error`; lossy stdout lines
 - [ ] Task 7: SIGKILL-after-grace and killed-run transcript tests; fourth publish after `fatal` refused
 
 ### Phase 4: Retention (`retention`)

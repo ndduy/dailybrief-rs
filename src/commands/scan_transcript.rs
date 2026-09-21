@@ -6,7 +6,8 @@ use std::path::Path;
 
 use crate::config::{Env, load_all};
 use crate::db::Db;
-use crate::harness::scan_transcript::{ScanOptions, scan_transcript};
+use crate::db::repo;
+use crate::harness::scan_transcript::{ScanOptions, scan_run_error, scan_transcript};
 
 use super::{CommandError, db_path};
 
@@ -17,9 +18,14 @@ pub async fn run(env: &Env, path: &Path, out: &mut impl Write) -> Result<i32, Co
     let db = Db::open(&db_path(&loaded.config))?;
     let topics = loaded.topics;
     let cap = loaded.config.caps.web_search;
+    // The run directory names the run: `<data>/runs/<id>/transcript.jsonl`.
+    let run_id = path
+        .parent()
+        .and_then(|d| d.file_name())
+        .map(|n| n.to_string_lossy().into_owned());
     let findings = db
         .call(move |conn| {
-            scan_transcript(
+            let mut findings = scan_transcript(
                 &lines,
                 &ScanOptions {
                     topics: &topics,
@@ -27,7 +33,14 @@ pub async fn run(env: &Env, path: &Path, out: &mut impl Write) -> Result<i32, Co
                     web_search_cap: cap,
                 },
                 conn,
-            )
+            )?;
+            if let Some(id) = run_id
+                && let Some(run) = repo::get_run(conn, &id)?
+                && let Some(error) = run.error
+            {
+                findings.extend(scan_run_error(&id, &error, &[]));
+            }
+            Ok(findings)
         })
         .await?;
     for f in &findings {

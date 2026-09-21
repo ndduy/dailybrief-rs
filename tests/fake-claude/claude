@@ -5,6 +5,8 @@
 #   DAILYBRIEF_FAKE_SCRIPT_DIR    directory with 1.jsonl, 2.jsonl, …: attempt N replays N.jsonl
 #                                 (the last one when N is past the end); a `count` file tracks N
 #   DAILYBRIEF_FAKE_STDERR_BYTES  bytes of noise to write on stderr before anything else
+#   DAILYBRIEF_FAKE_STDERR_TEXT   a line of text to write on stderr (redaction tests)
+#   DAILYBRIEF_FAKE_BAD_UTF8=1    emit one stdout line with an invalid UTF-8 byte before the transcript
 #   DAILYBRIEF_FAKE_HANG=1        after replaying, sleep until SIGTERM (exit 143) or SIGKILL
 #   DAILYBRIEF_FAKE_CLOSE_STDOUT=1  with HANG: close stdout and stderr first (a child that went quiet)
 #   DAILYBRIEF_FAKE_TERM_MARKER   file to create when SIGTERM is received (proves TERM before KILL)
@@ -12,6 +14,12 @@
 set -u
 if [ -n "${DAILYBRIEF_FAKE_STDERR_BYTES:-}" ]; then
   head -c "$DAILYBRIEF_FAKE_STDERR_BYTES" /dev/zero | tr '\0' 'e' >&2
+fi
+if [ -n "${DAILYBRIEF_FAKE_STDERR_TEXT:-}" ]; then
+  printf '%s\n' "$DAILYBRIEF_FAKE_STDERR_TEXT" >&2
+fi
+if [ "${DAILYBRIEF_FAKE_BAD_UTF8:-}" = "1" ]; then
+  printf '{"type":"user","message":{"content":"bad \377 byte"}}\n'
 fi
 if [ -n "${DAILYBRIEF_FAKE_SCRIPT_DIR:-}" ]; then
   counter="$DAILYBRIEF_FAKE_SCRIPT_DIR/count"

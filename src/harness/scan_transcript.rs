@@ -100,6 +100,18 @@ pub fn scan_transcript(
     Ok(findings)
 }
 
+/// The stored `runs.error` of a run must be as clean as its transcript: the harness's stderr
+/// tail lands there (redacted at write time; this is the check that it stayed so).
+pub fn scan_run_error(run_id: &str, error: &str, extra_forbidden: &[String]) -> Vec<String> {
+    DEFAULT_FORBIDDEN
+        .iter()
+        .copied()
+        .chain(extra_forbidden.iter().map(String::as_str))
+        .filter(|f| error.contains(f))
+        .map(|f| format!("runs.error of {run_id}: forbidden fragment '{f}'"))
+        .collect()
+}
+
 /// A `read_item` tool_result must carry the stored text of a known item; anything else is a finding.
 fn check_read_item(
     block: &Value,

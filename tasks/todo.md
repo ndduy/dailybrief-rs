@@ -114,13 +114,13 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `claude_code::redact(tail, &[secrets]) -> String` replaces `sk-ant-[A-Za-z0-9_-]+` and the literal `CLAUDE_CODE_OAUTH_TOKEN` value (the adapter knows it) with `[redacted]` before the tail enters any `RunOutcome` message; `scan-transcript` gains `--run <id>` (or scans the `runs.error` of the transcript's run when given a path under `data/runs/`) and reports a token in `runs.error` as a finding. The stdout loop reads bytes per line and converts with `from_utf8_lossy`, so an invalid byte never ends the run.
 
 **Acceptance criteria:**
-- [ ] test: `stderr_tail_is_redacted_before_storage` (fake writes a fake token to stderr and exits 1; `runs.error` holds `[redacted]`, never the token).
-- [ ] test: `scan_transcript_checks_runs_error` (a planted token in `runs.error` → finding, exit 1).
-- [ ] test: `invalid_utf8_line_does_not_end_the_run` (fake emits `\xff` inside a line; the run still reaches its `result`; the stored line is lossy).
+- [x] test: `stderr_tail_is_redacted_before_storage` (adapter level: the outcome message, which is what the runner stores, holds `[redacted]` twice and neither the literal token nor the `sk-ant-` run); unit `redact_replaces_literal_secrets_and_sk_ant_runs_only`.
+- [x] test: `scan_transcript_checks_runs_error` (command level on a temp data dir: a planted token in `runs.error` → finding naming `runs.error`, exit 1).
+- [x] test: `invalid_utf8_line_does_not_end_the_run` (fake emits `\xff` inside a line; the run reaches its `result`; the stored line carries U+FFFD).
 
 **Verification:**
-- [ ] `bin/dc cargo test harness scan`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test harness scan`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 3
 **Files likely touched:** `src/harness/claude_code.rs`, `src/harness/scan_transcript.rs`, `src/commands/scan_transcript.rs`, `tests/fake-claude/claude`, `tests/it/harness.rs`

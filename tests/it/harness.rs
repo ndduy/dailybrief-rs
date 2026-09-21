@@ -338,3 +338,108 @@ async fn run_hang_after_stdout_close_is_still_killed() {
     assert!(started.elapsed() < Duration::from_secs(5));
     assert!(marker_path.exists(), "SIGTERM was sent first");
 }
+
+/// Anything that looks like a token on the child's stderr is redacted before it can reach a
+/// `runs.error` row or a page: the literal OAuth value and any `sk-ant-…` run.
+#[tokio::test]
+async fn stderr_tail_is_redacted_before_storage() {
+    let t = fixture("no-result.jsonl");
+    let (outcome, _) = run_with(
+        &[
+            ("DAILYBRIEF_FAKE_TRANSCRIPT", t.to_str().unwrap()),
+            ("DAILYBRIEF_FAKE_EXIT", "1"),
+            (
+                "DAILYBRIEF_FAKE_STDERR_TEXT",
+                "auth failed: token sk-ant-oat01-ABCdef_123-xyz rejected; env had fake-token",
+            ),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
+    let RunOutcome::Failed {
+        message, reason, ..
+    } = outcome
+    else {
+        panic!("{outcome:?}")
+    };
+    assert_eq!(reason, FailReason::Exit);
+    assert!(message.contains("auth failed"), "{message}");
+    assert!(!message.contains("sk-ant-oat01"), "{message}");
+    assert!(!message.contains("fake-token"), "{message}");
+    assert_eq!(message.matches("[redacted]").count(), 2, "{message}");
+}
+
+/// An invalid UTF-8 byte inside a line is replaced, not fatal: the run still reaches its result.
+#[tokio::test]
+async fn invalid_utf8_line_does_not_end_the_run() {
+    let t = fixture("success.jsonl");
+    let (outcome, lines) = run_with(
+        &[
+            ("DAILYBRIEF_FAKE_TRANSCRIPT", t.to_str().unwrap()),
+            ("DAILYBRIEF_FAKE_BAD_UTF8", "1"),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
+    assert!(matches!(outcome, RunOutcome::Success { .. }), "{outcome:?}");
+    let expected = std::fs::read_to_string(&t)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count();
+    assert_eq!(lines.len(), expected + 1);
+    assert!(lines[0].1.contains('\u{FFFD}'), "{}", lines[0].1);
+}
+
+/// `scan-transcript` on a run's transcript also inspects that run's stored error text.
+#[tokio::test]
+async fn scan_transcript_checks_runs_error() {
+    use dailybrief::config::Env;
+    use dailybrief::db::Db;
+    use dailybrief::db::repo::{self, NewRun, RunFinish, RunKind, RunStatus};
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    let run_dir = data.join("runs").join("2026-09-17-leak");
+    std::fs::create_dir_all(&run_dir).unwrap();
+    let transcript = run_dir.join("transcript.jsonl");
+    std::fs::copy(fixture("no-result.jsonl"), &transcript).unwrap();
+    let db = Db::open(&data.join("brief.db")).unwrap();
+    db.with(|c| {
+        repo::insert_run(
+            c,
+            &NewRun {
+                id: "2026-09-17-leak".into(),
+                kind: RunKind::Manual,
+                harness: "claude-code".into(),
+                attempt: 1,
+                started_at: "2026-09-16T23:30:00.000Z".into(),
+                transcript_path: Some(transcript.to_string_lossy().into_owned()),
+            },
+        )?;
+        repo::finish_run(
+            c,
+            "2026-09-17-leak",
+            &RunFinish {
+                status: RunStatus::Failed,
+                ended_at: "2026-09-16T23:31:00.000Z".into(),
+                turns: None,
+                usage_json: None,
+                cost_usd: None,
+                session_id: None,
+                error: Some("exit code 1: OAUTH_TOKEN=sk-ant-oat01-leaked".into()),
+            },
+        )
+    })
+    .unwrap();
+    drop(db);
+    let data_s = data.to_string_lossy().into_owned();
+    let env = Env::from_lookup(|n| (n == "DAILYBRIEF_DATA_DIR").then(|| data_s.clone())).unwrap();
+    let mut out = Vec::new();
+    let code = dailybrief::commands::scan_transcript::run(&env, &transcript, &mut out)
+        .await
+        .unwrap();
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("runs.error"), "{text}");
+    assert!(text.contains("sk-ant-"), "{text}");
+}
