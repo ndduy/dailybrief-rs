@@ -11,7 +11,7 @@ use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 
-use super::types::{FailReason, HarnessRequest, RunOutcome};
+use super::types::{FailReason, HarnessRequest, LineSink, RunOutcome};
 use crate::config::ClaudeCodeSettings;
 
 /// How much of stderr is kept for the failure message.
@@ -231,11 +231,7 @@ impl ClaudeCodeAdapter {
 
     /// Spawns `claude -p`, streams stdout to `on_line` while draining stderr, enforces the wall
     /// clock (SIGTERM, then SIGKILL after `kill_grace`), and classifies the end of the process.
-    pub async fn run(
-        &self,
-        req: &HarnessRequest,
-        mut on_line: impl FnMut(&str, u64),
-    ) -> RunOutcome {
+    pub async fn run(&self, req: &HarnessRequest, sink: LineSink) -> RunOutcome {
         let failed = |reason, message: String, exit_code| RunOutcome::Failed {
             reason,
             message,
@@ -293,6 +289,7 @@ impl ClaudeCodeAdapter {
         let mut init: Option<InitEvent> = None;
         let mut result: Option<ResultEvent> = None;
         let mut seq: u64 = 0;
+        let mut sink_closed = false;
         let read_stdout = async {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(raw)) = lines.next_line().await {
@@ -300,7 +297,11 @@ impl ClaudeCodeAdapter {
                     continue;
                 }
                 seq += 1;
-                on_line(&raw, seq);
+                // A closed sink (the writer died) is logged once; the run is still classified.
+                if sink.send((seq, raw.clone())).await.is_err() && !sink_closed {
+                    sink_closed = true;
+                    tracing::error!(run_id = %req.run_id, seq, "line sink closed; later lines are not stored");
+                }
                 match parse_stream_line(&raw) {
                     StreamEvent::Init(i) => init = Some(i),
                     StreamEvent::Result(r) => result = Some(r),

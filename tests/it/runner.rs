@@ -52,11 +52,12 @@ fn fake(config: &Config, script_dir: &Path, hang: bool, wall_clock: Duration) ->
 
 fn script(dir: &Path, attempts: &[&str]) {
     for (i, name) in attempts.iter().enumerate() {
-        std::fs::copy(
-            root().join("tests/fixtures/transcripts").join(name),
-            dir.join(format!("{}.jsonl", i + 1)),
-        )
-        .unwrap();
+        let src = if Path::new(name).is_absolute() {
+            PathBuf::from(name)
+        } else {
+            root().join("tests/fixtures/transcripts").join(name)
+        };
+        std::fs::copy(src, dir.join(format!("{}.jsonl", i + 1))).unwrap();
     }
 }
 
@@ -414,4 +415,44 @@ async fn transcript_file_survives_run_events_failures() {
         file.lines().count(),
         expected.lines().filter(|l| !l.trim().is_empty()).count()
     );
+}
+
+/// The runner's writer keeps up with a long run: every line reaches the file and run_events.
+#[tokio::test]
+async fn runner_stores_every_line_of_a_long_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut text = String::new();
+    for i in 1..=3_000u32 {
+        text.push_str(&format!(
+            "{{\"type\":\"user\",\"message\":{{\"content\":\"line {i}\"}}}}\n"
+        ));
+    }
+    text.push_str(
+        &std::fs::read_to_string(root().join("tests/fixtures/transcripts/success.jsonl")).unwrap(),
+    );
+    let long = tmp.path().join("long.jsonl");
+    std::fs::write(&long, &text).unwrap();
+    let r = rig(
+        &[long.to_str().unwrap()],
+        false,
+        false,
+        Duration::from_secs(30),
+    );
+    let summary = r.runner.run(RunKind::Manual).await.unwrap();
+    assert_eq!(summary.status, "success");
+    let expected = text.lines().filter(|l| !l.trim().is_empty()).count() as i64;
+    let row = run_row(&r.db, &summary.final_run_id);
+    let file = std::fs::read_to_string(row.transcript_path.unwrap()).unwrap();
+    assert_eq!(file.lines().count() as i64, expected);
+    let id = summary.final_run_id.clone();
+    let (count, max_seq): (i64, i64) =
+        r.db.with(|c| {
+            Ok(c.query_row(
+                "SELECT count(*), max(seq) FROM run_events WHERE run_id = ?1",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?)
+        })
+        .unwrap();
+    assert_eq!((count, max_seq), (expected, expected));
 }

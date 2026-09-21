@@ -47,20 +47,20 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `HarnessKind::run` (and `ClaudeCodeAdapter::run`) take `tokio::sync::mpsc::Sender<(u64, String)>` instead of `impl FnMut(&str, u64)` and `await` each `send`; the runner creates `channel(1024)`, the writer task writes the file line first and inserts `run_events` second (Task-1-era behaviour kept: a DB error is logged, the file continues). A full channel logs once at warn per run. Update the fake-based tests mechanically (they collect through a channel now).
 
 **Acceptance criteria:**
-- [ ] test: `lines_are_never_dropped_under_backpressure` — fake knob `DAILYBRIEF_FAKE_LINES=10000` emits 10 000 numbered lines as fast as it can; a writer that sleeps 1 ms per line; every line is in the file and in `run_events`, in order, and the adapter returns `Success`.
-- [ ] test: `argv_snapshot` unchanged; every existing harness/runner test green with the new signature.
-- [ ] `CONSTRAINTS.md` check budget holds (`bin/check task` ≤ 4 min; the new test ≤ 15 s).
+- [x] test: `lines_are_never_dropped_under_backpressure` (adapter level: 10 000 lines through a 64-slot channel with a consumer that sleeps every 50 lines; all delivered in order, `Success`) and `runner_stores_every_line_of_a_long_run` (3 000 lines: file line count and `run_events` count/max seq equal). No fake knob was needed: a long transcript file does it.
+- [x] test: `argv_snapshot` unchanged; every existing harness/runner test green with the new signature (`LineSink = mpsc::Sender<(u64, String)>`, capacity 1024 in the runner).
+- [x] `CONSTRAINTS.md` check budget holds (the new tests run in under a second).
 
 **Verification:**
-- [ ] `bin/dc cargo test harness runner`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test harness runner`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 2 (nothing functional; keeps the seam change after the model lands)
 **Files likely touched:** `src/harness/types.rs`, `src/harness/claude_code.rs`, `src/harness/runner.rs`, `tests/fake-claude/claude`, `tests/it/harness.rs`, `tests/it/runner.rs`
 **Estimated scope:** Medium
 
 ## Checkpoint A
-- [ ] `bin/check task` green; every fixture line typed; turn count pinned to `result.num_turns` (or ADR 0012 explains)
+- [x] `bin/check task` green; every fixture line typed; turn count pinned to `num_turns - 1 ..= num_turns` (ADR 0012 explains the final round trip)
 - [ ] Review with human
 
 ---

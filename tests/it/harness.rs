@@ -54,13 +54,62 @@ async fn run_with(
     wall_clock: Duration,
 ) -> (RunOutcome, Vec<(u64, String)>) {
     let dir = tempfile::tempdir().unwrap();
-    let mut lines = Vec::new();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, String)>(1024);
+    let collector = tokio::spawn(async move {
+        let mut lines = Vec::new();
+        while let Some(line) = rx.recv().await {
+            lines.push(line);
+        }
+        lines
+    });
     let outcome = adapter(knobs, wall_clock)
-        .run(&request(dir.path()), |raw, seq| {
-            lines.push((seq, raw.to_string()))
-        })
+        .run(&request(dir.path()), tx)
         .await;
+    let lines = collector.await.unwrap();
     (outcome, lines)
+}
+
+/// The child writes 10 000 lines faster than a deliberately slow consumer takes them: the
+/// bounded channel makes the reader wait, nothing is dropped, and the order holds.
+#[tokio::test]
+async fn lines_are_never_dropped_under_backpressure() {
+    let dir = tempfile::tempdir().unwrap();
+    let long = dir.path().join("long.jsonl");
+    let mut text = String::new();
+    for i in 1..=10_000u32 {
+        text.push_str(&format!(
+            "{{\"type\":\"user\",\"message\":{{\"content\":\"line {i}\"}}}}\n"
+        ));
+    }
+    text.push_str(&std::fs::read_to_string(fixture("success.jsonl")).unwrap());
+    std::fs::write(&long, &text).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, String)>(64);
+    let collector = tokio::spawn(async move {
+        let mut lines = Vec::new();
+        while let Some(line) = rx.recv().await {
+            if lines.len() % 50 == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            lines.push(line);
+        }
+        lines
+    });
+    let started = std::time::Instant::now();
+    let outcome = adapter(
+        &[("DAILYBRIEF_FAKE_TRANSCRIPT", long.to_str().unwrap())],
+        Duration::from_secs(30),
+    )
+    .run(&request(dir.path()), tx)
+    .await;
+    let lines = collector.await.unwrap();
+    assert!(matches!(outcome, RunOutcome::Success { .. }), "{outcome:?}");
+    let expected = text.lines().filter(|l| !l.trim().is_empty()).count();
+    assert_eq!(lines.len(), expected);
+    for (i, (seq, raw)) in lines.iter().take(10_000).enumerate() {
+        assert_eq!(*seq, i as u64 + 1);
+        assert!(raw.ends_with(&format!("\"line {}\"}}}}", i + 1)), "{raw}");
+    }
+    assert!(started.elapsed() < Duration::from_secs(15));
 }
 
 #[tokio::test]
@@ -237,8 +286,9 @@ async fn run_reports_a_missing_binary() {
     let mut a = ClaudeCodeAdapter::new(settings, &parent).unwrap();
     a.binary = PathBuf::from("/nonexistent/claude");
     let dir = tempfile::tempdir().unwrap();
+    let (tx, _rx) = tokio::sync::mpsc::channel(8);
     let outcome = HarnessKind::ClaudeCode(a)
-        .run(&request(dir.path()), |_, _| {})
+        .run(&request(dir.path()), tx)
         .await;
     match outcome {
         RunOutcome::Failed {

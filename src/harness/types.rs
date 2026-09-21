@@ -5,6 +5,9 @@ use std::path::PathBuf;
 
 use super::claude_code::{ClaudeCodeAdapter, InitEvent, ResultEvent};
 
+/// Where an adapter delivers `(seq, raw line)` pairs.
+pub type LineSink = tokio::sync::mpsc::Sender<(u64, String)>;
+
 /// What the runner hands an adapter for one attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HarnessRequest {
@@ -96,11 +99,12 @@ impl HarnessKind {
         }
     }
 
-    /// Runs one attempt; `on_line` receives every raw stdout line with its 1-based sequence
-    /// number before it is parsed.
-    pub async fn run(&self, req: &HarnessRequest, on_line: impl FnMut(&str, u64)) -> RunOutcome {
+    /// Runs one attempt; every raw stdout line goes to `sink` with its 1-based sequence number
+    /// before it is parsed. The channel is bounded and the adapter awaits each send, so a slow
+    /// consumer holds the child on its pipe rather than losing a line (ADR 0012).
+    pub async fn run(&self, req: &HarnessRequest, sink: LineSink) -> RunOutcome {
         match self {
-            Self::ClaudeCode(adapter) => adapter.run(req, on_line).await,
+            Self::ClaudeCode(adapter) => adapter.run(req, sink).await,
         }
     }
 }

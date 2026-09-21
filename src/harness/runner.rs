@@ -54,6 +54,9 @@ pub fn new_run_id(now: DateTime<Utc>, tz: Tz) -> String {
     format!("{}-{}", date_in_zone(now, tz), &hex[..8])
 }
 
+/// Lines in flight between the adapter and the writer before the child is held back.
+pub const LINE_CHANNEL_CAPACITY: usize = 1024;
+
 pub fn run_dir(data_dir: &Path, run_id: &str) -> PathBuf {
     data_dir.join("runs").join(run_id)
 }
@@ -191,9 +194,10 @@ impl Runner {
         }
         tracing::info!(run_id = %run_id, kind = kind.as_str(), attempt = attempt_no, "run started");
 
-        // Every raw line goes to the transcript file and run_events through one writer task, so
-        // the adapter's synchronous hook never touches the runtime or the database directly.
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(u64, String)>();
+        // Every raw line goes to the transcript file and run_events through one writer task. The
+        // channel is bounded: when the writer is behind, the adapter waits and the child blocks on
+        // its pipe, so a burst is slowed down, never dropped (ADR 0012).
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, String)>(LINE_CHANNEL_CAPACITY);
         let writer = {
             let db = self.db.clone();
             let run_id = run_id.clone();
@@ -230,13 +234,7 @@ impl Runner {
             user_message: self.user_message.clone(),
             json_schema: self.json_schema.clone(),
         };
-        let outcome = self
-            .harness
-            .run(&req, |raw, seq| {
-                let _ = tx.send((seq, raw.to_string()));
-            })
-            .await;
-        drop(tx);
+        let outcome = self.harness.run(&req, tx).await;
         if let Ok(Err(e)) = writer.await {
             tracing::error!(run_id = %run_id, error = %e, "transcript writer failed");
         }
