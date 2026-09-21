@@ -173,3 +173,45 @@ fn dockerfile_uses_the_vendored_installer_and_purges_download_tools() {
         "claude-install.sh"
     );
 }
+
+/// `deny.toml` and CONSTRAINTS.md name the same licence set, so neither can drift alone.
+#[test]
+fn deny_licences_match_constraints() {
+    let deny = read("deny.toml");
+    let allow = deny
+        .split("allow = [")
+        .nth(1)
+        .and_then(|s| s.split(']').next())
+        .expect("deny.toml [licenses].allow");
+    let from_deny: std::collections::BTreeSet<String> = allow
+        .lines()
+        .filter_map(|l| {
+            l.trim()
+                .trim_end_matches(',')
+                .trim_matches('"')
+                .to_string()
+                .into()
+        })
+        .filter(|l: &String| !l.is_empty())
+        .collect();
+    let constraints = read("CONSTRAINTS.md");
+    let listed = constraints
+        .split("licences only ")
+        .nth(1)
+        .and_then(|s| s.split(" (").next())
+        .expect("CONSTRAINTS.md licence list");
+    let from_constraints: std::collections::BTreeSet<String> =
+        listed.split(", ").map(|l| l.trim().to_string()).collect();
+    assert_eq!(from_deny, from_constraints);
+}
+
+/// The app image is a variable with the runtime tag as default: rollback is one env var.
+#[test]
+fn compose_app_image_is_overridable_for_rollback() {
+    let compose = read("compose.yaml");
+    let app = compose.split("\n  dev:").next().unwrap_or_default();
+    assert!(
+        app.contains("image: ${DAILYBRIEF_IMAGE:-dailybrief-rs:runtime}"),
+        "{app}"
+    );
+}

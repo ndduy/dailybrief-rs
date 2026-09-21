@@ -243,6 +243,19 @@ mod tests {
     }
 
     #[test]
+    fn unknown_key_mcp_command_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            "config/config.toml",
+            "[service]\ntimezone = \"UTC\"\n[harness]\nmcp_command = \"dailybrief\"\n",
+        );
+        let env = env_with(&[("DAILYBRIEF_CONFIG", path.to_str().unwrap())]);
+        let err = load_config(&env).unwrap_err();
+        assert!(err.to_string().contains("mcp_command"), "{err}");
+    }
+
+    #[test]
     fn rejects_bad_timezone() {
         let dir = tempfile::tempdir().unwrap();
         let path = write(

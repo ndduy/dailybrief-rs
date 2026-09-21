@@ -41,8 +41,7 @@ dimensions = 384
 
 [harness]
 default = "claude-code"
-mcp_command = "dailybrief"   # written into each run's mcp.json; the harness spawns it with mcp_args
-mcp_args = ["mcp"]
+mcp_args = ["mcp"]          # written into each run's mcp.json after this service's own executable
 
 [harness.claude-code]
 model = "opus"

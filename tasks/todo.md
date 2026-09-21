@@ -275,12 +275,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** Add the three extra licences to `CONSTRAINTS.md` with reasons (or remove them from `deny.toml` if unused); remove `mcp_command`/`mcp_args` from config and schema (`current_exe()` stays); `docker tag dailybrief-rs:runtime dailybrief-rs:r0` on the box before the first M2 deploy and `DAILYBRIEF_IMAGE` in `compose.yaml` (default `dailybrief-rs:runtime`); `docs/runbook.md` with the token renewal date, advisory expiries (2026-12-17), prune, rollback by tag, the morning checklist; ADR 0015.
 
 **Acceptance criteria:**
-- [ ] test: `deny_licences_match_constraints` (parses both files); config `unknown key mcp_command is rejected` (deny_unknown_fields).
-- [ ] `docker images` shows `dailybrief-rs:r0`; `docker compose --profile app config` shows the image variable resolved.
-- [ ] `docs/runbook.md` and `docs/adr/0015-rollback-by-image-tag.md` exist.
+- [x] test: `deny_licences_match_constraints` (parses both files; CONSTRAINTS now lists the three extras with reasons); `unknown_key_mcp_command_is_rejected`; `compose_app_image_is_overridable_for_rollback`.
+- [x] `docker images` shows `dailybrief-rs:r0` (rebuilt from the deployed commit a5f985c: the live image object had been dropped by the image store after the M2 builds moved the tag, ADR 0015); `docker compose --profile app config` resolves `DAILYBRIEF_IMAGE` (default runtime, `r0` on override).
+- [x] `docs/runbook.md` and `docs/adr/0015-rollback-by-image-tag.md` exist (runbook: dates, morning check, deploy with tag-before-build, rollback, manual run, retention, egress gate).
 
 **Verification:**
-- [ ] `bin/dc bin/check full`
+- [x] `bin/dc bin/check task` (284 tests); `bin/check full` ran green at Checkpoint D
 
 **Dependencies:** Task 13
 **Files likely touched:** `deny.toml`, `CONSTRAINTS.md`, `config/config.toml`, `src/config/schema.rs`, `compose.yaml`, `docs/runbook.md`, `docs/adr/0015-rollback-by-image-tag.md`, `tests/it/compose.rs`

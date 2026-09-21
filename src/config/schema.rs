@@ -164,8 +164,8 @@ impl Default for EmbeddingsFile {
 pub struct HarnessFile {
     #[serde(default)]
     pub default: HarnessName,
-    #[serde(default = "d_mcp_command")]
-    pub mcp_command: String,
+    /// Arguments written into each run's `mcp.json` after the service's own executable
+    /// (`SPEC.md` §3: the harness spawns `current_exe()`, never a configured command).
     #[serde(default = "d_mcp_args")]
     pub mcp_args: Vec<String>,
     #[serde(default, rename = "claude-code")]
@@ -175,7 +175,6 @@ impl Default for HarnessFile {
     fn default() -> Self {
         Self {
             default: HarnessName::default(),
-            mcp_command: d_mcp_command(),
             mcp_args: d_mcp_args(),
             claude_code: ClaudeCodeFile::default(),
         }
@@ -272,9 +271,6 @@ fn d_model() -> String {
 }
 fn d_dimensions() -> u32 {
     384
-}
-fn d_mcp_command() -> String {
-    "dailybrief".to_string()
 }
 fn d_mcp_args() -> Vec<String> {
     vec!["mcp".to_string()]
@@ -428,7 +424,6 @@ pub struct Embeddings {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HarnessSettings {
     pub default: HarnessName,
-    pub mcp_command: String,
     pub mcp_args: Vec<String>,
     pub claude_code: ClaudeCodeSettings,
 }
@@ -573,11 +568,8 @@ impl TryFrom<ConfigFile> for Config {
         if !(0.0..=1.0).contains(&f.ingest.dedupe_cosine) {
             return Err(invalid(FILE, "ingest.dedupe_cosine must be within 0..=1"));
         }
-        if f.embeddings.model.trim().is_empty() || f.harness.mcp_command.trim().is_empty() {
-            return Err(invalid(
-                FILE,
-                "embeddings.model and harness.mcp_command must not be empty",
-            ));
+        if f.embeddings.model.trim().is_empty() {
+            return Err(invalid(FILE, "embeddings.model must not be empty"));
         }
         if f.harness.claude_code.model.trim().is_empty() {
             return Err(invalid(FILE, "harness.claude-code.model must not be empty"));
@@ -622,7 +614,6 @@ impl TryFrom<ConfigFile> for Config {
             },
             harness: HarnessSettings {
                 default: f.harness.default,
-                mcp_command: f.harness.mcp_command,
                 mcp_args: f.harness.mcp_args,
                 claude_code: ClaudeCodeSettings {
                     model: f.harness.claude_code.model,

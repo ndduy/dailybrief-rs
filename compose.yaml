@@ -14,7 +14,9 @@ services:
       # Build steps resolve DNS through the host (systemd-resolved on loopback is unreachable
       # from BuildKit's default network); the running containers use the normal bridge.
       network: host
-    image: dailybrief-rs:runtime
+    # DAILYBRIEF_IMAGE=dailybrief-rs:r0 is the rollback (ADR 0015): `docker compose --profile app down`
+    # then `DAILYBRIEF_IMAGE=dailybrief-rs:r0 docker compose --profile app up -d`.
+    image: ${DAILYBRIEF_IMAGE:-dailybrief-rs:runtime}
     env_file:
       - path: .env
         required: true
