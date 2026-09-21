@@ -50,7 +50,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Phase 1: Trajectory (`trajectory`)
 - [x] Task 1: `harness::trajectory` — the `Event` enum, `parse_line`, the real-run fixture
-- [ ] Task 2: `fold_turns`, `caps_used`, `retry_chain`; fixture reconciliation
+- [x] Task 2: `fold_turns`, `caps_used`, `retry_chain`; fixture reconciliation
 - [ ] Task 3: Bounded-channel line delivery; lines never dropped under backpressure
 
 ### Checkpoint A

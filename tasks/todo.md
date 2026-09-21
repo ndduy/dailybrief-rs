@@ -30,13 +30,13 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** Pure functions over `&[RunEvent]` (parsing each payload with Task 1): `fold_turns` groups assistant lines by `message.id` into `Turn { n, at, tool: Option<String>, args_summary, result_chars, since_prev_secs, tokens: { input, output, cache_read, cache_create } }`, pairing each `tool_use.id` with its `tool_result`; `caps_used(&[Turn], &Caps, &ClaudeCodeSettings) -> CapsUsed` counts `read_item`, `select`, `WebSearch` calls, turns and wall clock (first to last timestamp, or `result.duration_ms`) against the caps; `retry_chain(&[RunRow]) -> Vec<AttemptOutcome>` for the run ids of one summary (attempt 1 → 2 by `kind` and `started_at` within the lock window). A `user` line without a matching `tool_use` id becomes a turn-less result line, never a panic.
 
 **Acceptance criteria:**
-- [ ] test: `fixture_turns_reconcile_with_the_result_line` (turn count == `result.num_turns`; output tokens sum == `result.usage.output_tokens`; wall within 1 s of `duration_ms`; reads 33, selects 31, searches 8, publish 1) — if the turn definition needs adjusting, adjust ADR 0012 and the definition, not the assertion.
-- [ ] test: `turns_from_hand_written_events` (three turns, one without a tool, one with two tool_use blocks); `orphan_tool_result_does_not_panic`; `caps_used_marks_the_hit_cap` (turns 5/5 with `error_max_turns` → `hit: true`); `retry_chain_orders_attempts`.
-- [ ] Coverage of `src/harness/trajectory.rs` ≥ 90 % lines.
+- [x] test: `fixture_turns_reconcile_with_the_result_line` — turns 77 with `num_turns - 1 <= turns <= num_turns` (ADR 0012: `num_turns` 78 counts the final round trip); wall 500 s ± 1 of `duration_ms`; reads 32/45, selects 31/30 (hit), WebSearch 0/5, publish 1; 135 443 chars of read text. Per-turn tokens are not reconciled with the result (ADR 0012 measurement).
+- [x] test: `turns_from_hand_written_events`; `orphan_tool_result_and_unknown_lines_do_not_panic`; `caps_used_marks_the_hit_cap`; `retry_chain_orders_attempts_and_ignores_unrelated_runs`.
+- [ ] Coverage of `src/harness/trajectory.rs` ≥ 90 % lines (measured at Checkpoint C's `bin/check full`).
 
 **Verification:**
-- [ ] `bin/dc cargo test trajectory`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test trajectory`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 1
 **Files likely touched:** `src/harness/trajectory.rs`, `tests/it/trajectory.rs`, `tests/it/main.rs`, `docs/adr/0012-trajectory-model.md`

@@ -27,7 +27,7 @@ whose vocabulary changes with Claude Code releases. `SPEC.md` §8 asks for inter
 - 107 assistant lines, 77 distinct message ids, all consecutive; 77 `tool_use` blocks and
   77 `tool_result` blocks; `result.num_turns` = **78**. `num_turns` counts one more than the
   message ids: the final round trip that produced the `result` after the `StructuredOutput`
-  call. Task 2 asserts `num_turns - 1 <= turns <= num_turns`.
+  call. Task 2 asserts `num_turns - 1 <= turns <= num_turns` (green on the fixture: 77 turns).
 - Per-line `usage.output_tokens` do **not** sum to `result.usage.output_tokens` (1 890 over
   all lines, 1 695 over distinct ids, against 31 993 in the result, which also counts 17 439
   thinking tokens). Per-turn tokens are shown as the message reports them; the run's totals

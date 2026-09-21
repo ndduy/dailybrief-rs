@@ -3,10 +3,15 @@
 //! are kept as [`Event::Unknown`] with their raw value, never dropped. The vocabulary was
 //! observed on Claude Code 2.1.274 (`spec/m2.md` §8). Pure: no I/O, no SQL.
 
+use std::collections::HashMap;
+
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 
 pub use super::claude_code::{InitEvent, McpServerStatus, ResultEvent};
+use crate::config::{Caps, ClaudeCodeSettings};
+use crate::db::repo::{RunEvent, RunRow, RunStatus};
 
 /// One stdout line.
 #[derive(Debug, Clone, Deserialize)]
@@ -204,6 +209,304 @@ pub fn parse_line(raw: &str) -> Event {
 /// The `run_events.type` value for a raw line: its `type` field, or `unparseable`.
 pub fn event_type(raw: &str) -> String {
     parse_line(raw).kind().to_string()
+}
+
+// ---------- folding: turns, caps, retry chain (ADR 0012) ----------
+
+const ARGS_CHARS: usize = 120;
+const TEXT_CHARS: usize = 120;
+
+fn truncate(s: &str, max: usize) -> String {
+    let mut out: String = s.chars().take(max).collect();
+    if s.chars().nth(max).is_some() {
+        out.push('…');
+    }
+    out
+}
+
+/// `mcp__dailybrief__read_item` → `read_item`; built-ins keep their name.
+pub fn short_tool(name: &str) -> &str {
+    name.strip_prefix("mcp__dailybrief__").unwrap_or(name)
+}
+
+fn display_tool(tools: &[String]) -> Option<String> {
+    let shorts: Vec<&str> = tools.iter().map(|t| short_tool(t)).collect();
+    match shorts.as_slice() {
+        [] => None,
+        [one] => Some((*one).to_string()),
+        [first, rest @ ..] if rest.iter().all(|s| s == first) => {
+            Some(format!("{first} ×{}", shorts.len()))
+        }
+        _ => Some(shorts.join(" + ")),
+    }
+}
+
+/// Characters of text in a `tool_result` content (a string, or `{type: text}` parts).
+fn result_len(content: &Value) -> usize {
+    match content {
+        Value::String(s) => s.chars().count(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p.get("text").and_then(Value::as_str))
+            .map(|t| t.chars().count())
+            .sum(),
+        Value::Null => 0,
+        other => other.to_string().chars().count(),
+    }
+}
+
+fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|d| d.with_timezone(&Utc))
+}
+
+/// Token accounting for one turn (the last line of the message wins).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Tokens {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_create: u64,
+}
+
+/// One assistant message: what it called, what came back, when, and what it cost.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Turn {
+    /// 1-based.
+    pub n: u32,
+    pub message_id: Option<String>,
+    /// The first line's `timestamp`.
+    pub at: Option<String>,
+    /// Display name: `read_item`, `read_item ×2`, `search_items + select`; `None` without a tool.
+    pub tool: Option<String>,
+    /// Every tool called in this turn, full names, in order.
+    pub tools: Vec<String>,
+    /// Compact JSON of the first tool call's input, capped.
+    pub args_summary: String,
+    /// Characters of text returned across this turn's tool results.
+    pub result_chars: usize,
+    /// Seconds since the previous turn's timestamp; `None` for the first turn or without timestamps.
+    pub since_prev_secs: Option<f64>,
+    pub tokens: Tokens,
+    /// The first text block, capped.
+    pub text_preview: String,
+}
+
+/// Groups the stored events into turns: one per assistant `message.id` (consecutive lines that
+/// share it are one turn; a line without an id is its own turn), with each `tool_result`
+/// credited to the turn that issued the matching `tool_use`. Unknown lines and orphan results
+/// are ignored, never a panic.
+pub fn fold_turns(events: &[RunEvent]) -> Vec<Turn> {
+    let mut turns: Vec<Turn> = Vec::new();
+    let mut by_tool_use: HashMap<String, usize> = HashMap::new();
+    let mut open: Option<Option<String>> = None;
+    for e in events {
+        match parse_line(&e.payload_json) {
+            Event::Assistant(m) => {
+                let id = m.message.id.clone();
+                let same = matches!((&open, &id), (Some(Some(o)), Some(i)) if o == i);
+                if !same {
+                    turns.push(Turn {
+                        n: turns.len() as u32 + 1,
+                        message_id: id.clone(),
+                        at: m.timestamp.clone(),
+                        ..Turn::default()
+                    });
+                    open = Some(id);
+                }
+                let idx = turns.len() - 1;
+                if let Some(u) = m.message.usage {
+                    turns[idx].tokens = Tokens {
+                        input: u.input_tokens,
+                        output: u.output_tokens,
+                        cache_read: u.cache_read_input_tokens,
+                        cache_create: u.cache_creation_input_tokens,
+                    };
+                }
+                for b in m.message.content.blocks() {
+                    match b {
+                        Block::ToolUse { id, name, input } => {
+                            turns[idx].tools.push(name.clone());
+                            by_tool_use.insert(id.clone(), idx);
+                            if turns[idx].args_summary.is_empty() {
+                                turns[idx].args_summary = truncate(&input.to_string(), ARGS_CHARS);
+                            }
+                        }
+                        Block::Text { text } if turns[idx].text_preview.is_empty() => {
+                            turns[idx].text_preview = truncate(text.trim(), TEXT_CHARS);
+                        }
+                        _ => {}
+                    }
+                }
+                turns[idx].tool = display_tool(&turns[idx].tools);
+            }
+            Event::User(m) => {
+                for b in m.message.content.blocks() {
+                    if let Block::ToolResult {
+                        tool_use_id,
+                        content,
+                        ..
+                    } = b
+                        && let Some(&idx) = by_tool_use.get(tool_use_id)
+                    {
+                        turns[idx].result_chars += result_len(content);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut prev: Option<DateTime<Utc>> = None;
+    for t in &mut turns {
+        let at = t.at.as_deref().and_then(parse_ts);
+        t.since_prev_secs = match (prev, at) {
+            (Some(p), Some(a)) => Some((a - p).num_milliseconds() as f64 / 1000.0),
+            _ => None,
+        };
+        if at.is_some() {
+            prev = at;
+        }
+    }
+    turns
+}
+
+/// One counter against its cap.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Used {
+    pub used: u64,
+    pub cap: u64,
+    pub hit: bool,
+}
+
+/// What a run consumed, against the configured caps (`spec/m2.md` §8).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CapsUsed {
+    pub reads: Used,
+    /// `select` calls against `for_you + beyond_radar`.
+    pub selects: Used,
+    /// `WebSearch` calls against `web_search`.
+    pub searches: Used,
+    /// Turns against `max_turns`; `hit` also when the result says `error_max_turns`.
+    pub turns: Used,
+    /// Wall clock in seconds (the result's `duration_ms`, else first-to-last timestamp) against
+    /// `wall_clock_minutes`.
+    pub wall_secs: Used,
+    pub publishes: u64,
+    pub max_turns_hit: bool,
+}
+
+pub fn caps_used(
+    turns: &[Turn],
+    result: Option<&ResultEvent>,
+    caps: &Caps,
+    settings: &ClaudeCodeSettings,
+) -> CapsUsed {
+    let count = |name: &str| {
+        turns
+            .iter()
+            .flat_map(|t| t.tools.iter())
+            .filter(|t| short_tool(t) == name)
+            .count() as u64
+    };
+    let mark = |used: u64, cap: u64| Used {
+        used,
+        cap,
+        hit: cap > 0 && used >= cap,
+    };
+    let max_turns_hit = result.is_some_and(|r| r.subtype == "error_max_turns");
+    let wall = match result.and_then(|r| r.duration_ms) {
+        Some(ms) => (ms + 500) / 1000,
+        None => {
+            let stamps: Vec<DateTime<Utc>> = turns
+                .iter()
+                .filter_map(|t| t.at.as_deref().and_then(parse_ts))
+                .collect();
+            match (stamps.first(), stamps.last()) {
+                (Some(a), Some(b)) => (*b - *a).num_seconds().max(0) as u64,
+                _ => 0,
+            }
+        }
+    };
+    let turn_count = turns.len() as u64;
+    let max_turns = u64::from(settings.max_turns);
+    let wall_cap = u64::from(settings.wall_clock_minutes) * 60;
+    CapsUsed {
+        reads: mark(count("read_item"), u64::from(caps.reads)),
+        selects: mark(
+            count("select"),
+            u64::from(caps.for_you) + u64::from(caps.beyond_radar),
+        ),
+        searches: mark(count("WebSearch"), u64::from(caps.web_search)),
+        turns: Used {
+            used: turn_count,
+            cap: max_turns,
+            hit: max_turns_hit || (max_turns > 0 && turn_count >= max_turns),
+        },
+        wall_secs: Used {
+            used: wall,
+            cap: wall_cap,
+            hit: wall_cap > 0 && wall >= wall_cap,
+        },
+        publishes: count("publish_digest"),
+        max_turns_hit,
+    }
+}
+
+/// One attempt of a run summary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttemptOutcome {
+    pub run_id: String,
+    pub attempt: i64,
+    pub status: RunStatus,
+    pub error: Option<String>,
+    pub started_at: String,
+}
+
+fn secs_between(a: &str, b: &str) -> i64 {
+    match (parse_ts(a), parse_ts(b)) {
+        (Some(a), Some(b)) => (b - a).num_seconds().abs(),
+        _ => i64::MAX,
+    }
+}
+
+/// The attempts that belong with `target`: same kind, attempt numbers consecutive, each started
+/// within `window_secs` of the previous (the runner starts attempt 2 right after attempt 1
+/// ends, always inside the lock window). Oldest first; empty when `target` is not in `rows`.
+pub fn retry_chain(target: &str, rows: &[RunRow], window_secs: i64) -> Vec<AttemptOutcome> {
+    let mut sorted: Vec<&RunRow> = rows.iter().collect();
+    sorted.sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.id.cmp(&b.id)));
+    let Some(pos) = sorted.iter().position(|r| r.id == target) else {
+        return Vec::new();
+    };
+    let close = |a: &RunRow, b: &RunRow| {
+        a.kind == b.kind && secs_between(&a.started_at, &b.started_at) <= window_secs
+    };
+    let mut first = pos;
+    while first > 0
+        && sorted[first - 1].attempt == sorted[first].attempt - 1
+        && sorted[first - 1].attempt >= 1
+        && close(sorted[first - 1], sorted[first])
+    {
+        first -= 1;
+    }
+    let mut last = pos;
+    while last + 1 < sorted.len()
+        && sorted[last + 1].attempt == sorted[last].attempt + 1
+        && close(sorted[last], sorted[last + 1])
+    {
+        last += 1;
+    }
+    sorted[first..=last]
+        .iter()
+        .map(|r| AttemptOutcome {
+            run_id: r.id.clone(),
+            attempt: r.attempt,
+            status: r.status,
+            error: r.error.clone(),
+            started_at: r.started_at.clone(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
