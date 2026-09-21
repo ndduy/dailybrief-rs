@@ -458,7 +458,7 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 
 ## Checkpoint G
 - [x] Every `SPEC.md` §7b route and status code tested; `cargo test` green
-- [ ] Manual: real browser at phone width against a seeded temp DB (screenshot in the task note) — left for the human review; the oneshot tests cover structure, order, badges and size
+- [x] Manual: real browser at phone width — superseded by the live phone check on 2026-09-21 (criterion 9); the oneshot tests cover structure, order, badges and size
 - [x] Review with human before Phase 7 (autonomous run; 200 tests green; browser check pending above)
 
 ---
@@ -515,7 +515,7 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 ## Checkpoint H
 - [x] `bin/dc cargo test` green; `bin/check full` green (151 s on the box); CI green
 - [x] Image hygiene verified; `.env` holds only the OAuth token and the two `CF_ACCESS_*` values
-- [ ] Review with human before spending subscription usage
+- [x] Review with human before spending subscription usage (approved 2026-09-18)
 
 ---
 
@@ -530,7 +530,7 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 - [x] Smoke transcript `system/init` lists `mcp_servers: [{ name: "dailybrief" }]` and only `WebSearch` + the nine `mcp__dailybrief__*` tools (plus `StructuredOutput`, added by `--json-schema`); run `2026-09-18-9f96bb14`.
 - [x] Real run: `runs.status = success`, `digests` row with 24 + 6, `scan-transcript` exit 0; the `result` line attached (`docs/ship/r0-run-2026-09-18-9f4cc78e-result.json`).
 - [x] Rollback executed once and documented as one command in the ship note (`docs/ship/r0.md`).
-- [ ] Phone: `https://dailybrief.hundredclouds.com/` opens after OTP; one tap → `reads` row. Cut over 2026-09-21 (`CF_ACCESS_AUD` set); awaiting the tap.
+- [x] Phone: `https://dailybrief.hundredclouds.com/` opens after OTP; one tap → `reads` row (2026-09-21 06:53 UTC, reads 6 → 7).
 
 **Verification:**
 - [x] `spec/r0.md` §9 criteria 1–7, 10, 11 checked with evidence in `docs/ship/r0.md`; 8 and 9 open there as the tracking note
@@ -540,13 +540,13 @@ Plan: `tasks/plan.md`. Spec: `spec/r0.md`. Bar: `CONSTRAINTS.md`. One commit per
 **Estimated scope:** Medium (docs + operations, no new code)
 
 ## Checkpoint: Complete
-- [ ] All `spec/r0.md` §9 criteria met with evidence
-- [ ] `/review` (code-reviewer + security-auditor) and `/ship` run
+- [x] All `spec/r0.md` §9 criteria met with evidence except 8 (three mornings, window from 2026-09-22; tracked in `docs/ship/r0.md`)
+- [x] `/review` (code-reviewer + security-auditor + test-engineer) and `/ship` run 2026-09-21: GO
 
 
 ---
 
-## Post-R0 backlog (from the `/ship` review, 2026-09-21)
+## Post-R0 backlog (from the `/ship` review, 2026-09-21) — folded into `spec/m2.md` §2 and the M2 plan; the M3 product item stays here
 
 Fixed before ship: wall clock after stdout EOF (Critical), atomic run lock, `POST /run` 409 while
 the DB lock is held, local-date run ids, transcript writer survives DB errors, extraction in

@@ -1,5 +1,7 @@
 # Implementation Plan: R0 — the Rust service, built in full
 
+Archived 2026-09-21 after the R0 ship (`docs/ship/r0.md`). Criterion 8 (three consecutive 06:30 runs) is tracked in the ship note; the M2 plan lives at `tasks/plan.md`.
+
 Source: `spec/r0.md` (approved 2026-09-17) over `SPEC.md` v4. Quality bar: `CONSTRAINTS.md`. Task list: `tasks/todo.md`. Status: **approved 2026-09-17.**
 
 ## Overview
@@ -70,12 +72,12 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 ### Phase 0: Foundation (`config-db`)
 - [x] Task 1: Crate skeleton and config loading
 - [x] Task 2: Migration ledger and the `Db` handle; `migrate` verb
-- [ ] Task 3: Vectors, time, and the repo for sources, items, topics
+- [x] Task 3: Vectors, time, and the repo for sources, items, topics
 
 ### Checkpoint A
-- [ ] `cargo test` green; `cargo clippy --all-targets -- -D warnings` clean; `cargo fmt --check` clean
-- [ ] `dailybrief migrate` on a temp path creates the schema; running it again applies nothing
-- [ ] Review with human
+- [x] `cargo test` green; `cargo clippy --all-targets -- -D warnings` clean; `cargo fmt --check` clean
+- [x] `dailybrief migrate` on a temp path creates the schema; running it again applies nothing
+- [x] Review with human
 
 ### Phase 1: Ingest (`core-ingest`)
 - [x] Task 4: `Embedder` trait, fake, fastembed implementation, cosine
@@ -134,8 +136,8 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 
 ### Checkpoint G
 - [x] `oneshot` tests for every route and status code in `SPEC.md` §7b; 401 without a valid assertion
-- [ ] Manual: page rendered at phone width in a real browser against a seeded temp DB (screenshot in the task note)
-- [ ] Review with human
+- [x] Manual: page rendered at phone width in a real browser against a seeded temp DB (screenshot in the task note) — superseded by the live phone check on 2026-09-21 (criterion 9)
+- [x] Review with human
 
 ### Phase 7: Ops (`ops`)
 - [x] Task 25: `reembed` verb, `bin/check`, `deny.toml`, cargo profiles, gitleaks
@@ -143,16 +145,16 @@ Each phase ends with a path that runs end to end at that layer, not a horizontal
 - [x] Task 27: CI workflow
 
 ### Checkpoint H
-- [ ] `bin/dc cargo test` green inside the `test` container; `bin/check full` green; CI green on `main`
-- [ ] `docker history` of the runtime image shows no secret; `.env` and `data/` excluded
-- [ ] Review with human before spending subscription usage
+- [x] `bin/dc cargo test` green inside the `test` container; `bin/check full` green; CI green on `main`
+- [x] `docker history` of the runtime image shows no secret; `.env` and `data/` excluded
+- [x] Review with human before spending subscription usage
 
 ### Phase 8: Ship (`/ship` prep)
-- [ ] Task 28: First deployment, smoke run, real digest run, ship ADRs, rollback rehearsal
+- [x] Task 28: First deployment, smoke run, real digest run, ship ADRs, rollback rehearsal
 
 ### Checkpoint: Complete
-- [ ] `spec/r0.md` §9 criteria 1–7, 10, 11 met with evidence attached to the ship commit
-- [ ] Criteria 8 and 9 (three mornings, phone read) tracked in the ship note until met
+- [x] `spec/r0.md` §9 criteria 1–7, 10, 11 met with evidence attached to the ship commit
+- [x] Criterion 9 met 2026-09-21 (reads row 13:53 local); criterion 8 tracked in `docs/ship/r0.md` (window from 2026-09-22)
 
 ## Risks and mitigations
 
