@@ -32,7 +32,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Acceptance criteria:**
 - [x] test: `fixture_turns_reconcile_with_the_result_line` — turns 77 with `num_turns - 1 <= turns <= num_turns` (ADR 0012: `num_turns` 78 counts the final round trip); wall 500 s ± 1 of `duration_ms`; reads 32/45, selects 31/30 (hit), WebSearch 0/5, publish 1; 135 443 chars of read text. Per-turn tokens are not reconciled with the result (ADR 0012 measurement).
 - [x] test: `turns_from_hand_written_events`; `orphan_tool_result_and_unknown_lines_do_not_panic`; `caps_used_marks_the_hit_cap`; `retry_chain_orders_attempts_and_ignores_unrelated_runs`.
-- [ ] Coverage of `src/harness/trajectory.rs` ≥ 90 % lines (measured at Checkpoint C's `bin/check full`).
+- [x] Coverage of `src/harness/trajectory.rs` ≥ 90 % lines (96.07 % at Checkpoint C).
 
 **Verification:**
 - [x] `bin/dc cargo test trajectory`
@@ -170,19 +170,19 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `[retention] cron = "0 7 * * *"` (validated like `[schedule].cron`); `serve` runs a second `Scheduler::run_loop` that calls `retention::plan` + `apply` and logs the counts. The job never overlaps a run (07:00 is after the 06:30 window and the wall clock; also skip if `status = running` exists, by construction of `plan`).
 
 **Acceptance criteria:**
-- [ ] test: `daily_prune_fires_after_the_morning_run` (injected clock stepping 06:30 → 07:00; the run job fires, then the prune job; order asserted through a shared log).
-- [ ] test: `prune_job_error_does_not_stop_serve` (a failing apply logs and the loop continues).
+- [x] test: `daily_prune_fires_after_the_morning_run` (one loop drives both crons on an injected clock: run 06:30, prune 07:00, run, prune).
+- [x] test: `prune_job_error_does_not_stop_serve` (a failing first prune stops neither schedule).
 
 **Verification:**
-- [ ] `bin/dc cargo test scheduler serve`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test scheduler serve`
+- [x] `bin/dc bin/check task` (full: 269 tests, coverage 95.51 % / 82.26 %)
 
 **Dependencies:** Task 8
 **Files likely touched:** `src/commands/serve.rs`, `src/harness/scheduler.rs`, `src/config/schema.rs`, `config/config.toml`, `tests/it/runner.rs`
 **Estimated scope:** Small
 
 ## Checkpoint C
-- [ ] `bin/check full` green; retention and harness tests pass; coverage not below R0 (95.4 % / 81.0 %)
+- [x] `bin/check full` green (2026-09-21); retention and harness tests pass; coverage 95.51 % core / 82.26 % rest (R0: 95.4 / 81.0); `trajectory.rs` 96.07 %, `retention.rs` 96.21 %
 - [ ] Review with human
 
 ---

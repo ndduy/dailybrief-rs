@@ -6,11 +6,12 @@ use std::sync::Arc;
 
 use crate::config::{Env, load_all};
 use crate::core::embed::embedder_for;
+use crate::core::retention::prune;
 use crate::core::time::parse_tz;
 use crate::db::Db;
 use crate::db::repo::RunKind;
 use crate::harness::claude_code::EnvError;
-use crate::harness::scheduler::Scheduler;
+use crate::harness::scheduler::{Scheduler, run_two_loops};
 use crate::harness::service_runner::{ServiceRunner, ServiceRunnerError, ServiceRunnerOptions};
 use crate::web::app::{AppState, assert_bind_allowed, router};
 use crate::web::auth::{AccessSettings, AccessVerifier};
@@ -63,36 +64,58 @@ pub async fn run(env: &Env, process_env: &HashMap<String, String>) -> Result<(),
     tracing::info!(%addr, runs_enabled = runner.is_some(), "serving");
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
-    let scheduler_task = runner.as_ref().map(|runner| {
-        let scheduler = Scheduler::new(&config.schedule.cron, tz)
-            .map_err(|e| CommandError::Usage(e.to_string()));
-        let runner = Arc::clone(runner);
+    // One loop drives both daily jobs (ADR 0013): the 06:30 run and the 07:00 prune never
+    // overlap because the loop awaits whichever is due. Without a runner only the prune runs.
+    let prune_scheduler = Scheduler::new(&config.retention.cron, tz)
+        .map_err(|e| CommandError::Usage(e.to_string()))?;
+    let prune_job = {
+        let db = db.clone();
+        let data_dir = config.paths.data_dir.clone();
+        let days = config.retention.days;
+        move || {
+            let db = db.clone();
+            let data_dir = data_dir.clone();
+            async move { prune(&db, &data_dir, chrono::Utc::now(), days, false).await }
+        }
+    };
+    let scheduler_task = {
         let mut stop_rx = stop_rx.clone();
-        scheduler.map(|scheduler| {
-            tokio::spawn(async move {
-                let result = scheduler
-                    .run_loop(
+        let stop = async move {
+            let _ = stop_rx.wait_for(|stopped| *stopped).await;
+        };
+        match runner.as_ref() {
+            Some(runner) => {
+                let run_scheduler = Scheduler::new(&config.schedule.cron, tz)
+                    .map_err(|e| CommandError::Usage(e.to_string()))?;
+                let runner = Arc::clone(runner);
+                tokio::spawn(async move {
+                    let result = run_two_loops(
+                        &run_scheduler,
+                        &prune_scheduler,
                         chrono::Utc::now,
                         tokio::time::sleep,
                         move || {
                             let runner = Arc::clone(&runner);
                             async move { runner.run(RunKind::Scheduled).await }
                         },
-                        async move {
-                            let _ = stop_rx.wait_for(|stopped| *stopped).await;
-                        },
+                        prune_job,
+                        stop,
                     )
                     .await;
+                    if let Err(e) = result {
+                        tracing::error!(error = %e, "scheduler stopped");
+                    }
+                })
+            }
+            None => tokio::spawn(async move {
+                let result = prune_scheduler
+                    .run_loop(chrono::Utc::now, tokio::time::sleep, prune_job, stop)
+                    .await;
                 if let Err(e) = result {
-                    tracing::error!(error = %e, "scheduler stopped");
+                    tracing::error!(error = %e, "prune scheduler stopped");
                 }
-            })
-        })
-    });
-    let scheduler_task = match scheduler_task {
-        Some(Ok(task)) => Some(task),
-        Some(Err(e)) => return Err(e),
-        None => None,
+            }),
+        }
     };
 
     let state = AppState::new(db, config, tz, chrono::Utc::now, runner).with_access(access);
@@ -100,9 +123,7 @@ pub async fn run(env: &Env, process_env: &HashMap<String, String>) -> Result<(),
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     let _ = stop_tx.send(true);
-    if let Some(task) = scheduler_task {
-        let _ = task.await;
-    }
+    let _ = scheduler_task.await;
     Ok(())
 }
 

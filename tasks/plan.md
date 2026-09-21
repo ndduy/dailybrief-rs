@@ -71,10 +71,10 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Phase 4: Retention (`retention`)
 - [x] Task 8: `core::retention` and `dailybrief prune [--days] [--dry-run]` (ADR 0013)
-- [ ] Task 9: Daily prune job in `serve` (`[retention]` config; 07:00 local)
+- [x] Task 9: Daily prune job in `serve` (`[retention]` config; 07:00 local)
 
 ### Checkpoint C
-- [ ] `bin/check full` green; the retention tests and the four harness tests pass; coverage not below R0
+- [x] `bin/check full` green; the retention tests and the four harness tests pass; coverage 95.51 % / 82.26 % (above R0)
 - [ ] Review with human
 
 ### Phase 5: Web hardening (`web-hardening`)

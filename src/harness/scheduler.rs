@@ -86,6 +86,66 @@ impl Scheduler {
     }
 }
 
+/// Two schedules in one loop (the morning run and the daily prune, ADR 0013): whichever is
+/// due first runs, and the other waits for it to finish, so the prune can never overlap a
+/// run. A failing job is logged and the loop goes on. Ends when `stop` resolves.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_two_loops<C, S, SF, J1, JF1, T1, E1, J2, JF2, T2, E2>(
+    first: &Scheduler,
+    second: &Scheduler,
+    clock: C,
+    sleep: S,
+    mut job1: J1,
+    mut job2: J2,
+    stop: impl Future<Output = ()>,
+) -> Result<(), SchedulerError>
+where
+    C: Fn() -> DateTime<Utc>,
+    S: Fn(Duration) -> SF,
+    SF: Future<Output = ()>,
+    J1: FnMut() -> JF1,
+    JF1: Future<Output = Result<T1, E1>>,
+    E1: std::fmt::Display,
+    J2: FnMut() -> JF2,
+    JF2: Future<Output = Result<T2, E2>>,
+    E2: std::fmt::Display,
+{
+    tokio::pin!(stop);
+    loop {
+        let now = clock();
+        let n1 = first.next_after(now)?;
+        let n2 = second.next_after(now)?;
+        let first_due = n1 <= n2;
+        let (next, expr) = if first_due {
+            (n1, &first.expr)
+        } else {
+            (n2, &second.expr)
+        };
+        let wait = (next - now).to_std().unwrap_or(Duration::ZERO);
+        tracing::info!(cron = %expr, next = %next, "scheduler waiting");
+        tokio::select! {
+            biased;
+            () = &mut stop => return Ok(()),
+            () = sleep(wait) => {}
+        }
+        if first_due {
+            match job1().await {
+                Ok(_) => tracing::info!(cron = %expr, "scheduled job finished"),
+                Err(e) => {
+                    tracing::warn!(cron = %expr, error = %e, "scheduled job skipped or failed")
+                }
+            }
+        } else {
+            match job2().await {
+                Ok(_) => tracing::info!(cron = %expr, "scheduled job finished"),
+                Err(e) => {
+                    tracing::warn!(cron = %expr, error = %e, "scheduled job skipped or failed")
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,5 +242,94 @@ mod tests {
         let slept = slept.borrow();
         assert_eq!(slept[0], Duration::from_secs(6 * 3600 + 30 * 60));
         assert_eq!(slept[1], Duration::from_secs(24 * 3600));
+    }
+
+    /// One clock, two crons: the 06:30 run fires, then the 07:00 prune, and the next day again.
+    /// A prune that fails does not stop either schedule.
+    type Log = Rc<RefCell<Vec<(&'static str, DateTime<Utc>)>>>;
+
+    async fn two_loops_log(prune_fails_first: bool) -> Vec<(&'static str, DateTime<Utc>)> {
+        let run = Scheduler::new("30 6 * * *", chrono_tz::UTC).unwrap();
+        let prune = Scheduler::new("0 7 * * *", chrono_tz::UTC).unwrap();
+        let clock = Rc::new(Cell::new(
+            Utc.with_ymd_and_hms(2026, 9, 17, 0, 0, 0).unwrap(),
+        ));
+        let log: Log = Rc::new(RefCell::new(Vec::new()));
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let stop_tx = Rc::new(RefCell::new(Some(stop_tx)));
+        let (c1, c2, c3, c4) = (
+            Rc::clone(&clock),
+            Rc::clone(&clock),
+            Rc::clone(&clock),
+            Rc::clone(&clock),
+        );
+        let (l1, l2, l3) = (Rc::clone(&log), Rc::clone(&log), Rc::clone(&log));
+        let stop2 = Rc::clone(&stop_tx);
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async move {
+                let result = run_two_loops(
+                    &run,
+                    &prune,
+                    move || c1.get(),
+                    move |d| {
+                        c2.set(c2.get() + chrono::Duration::from_std(d).unwrap());
+                        async {}
+                    },
+                    move || {
+                        l1.borrow_mut().push(("run", c3.get()));
+                        async { Ok::<(), String>(()) }
+                    },
+                    move || {
+                        l2.borrow_mut().push(("prune", c4.get()));
+                        let n = l3.borrow().iter().filter(|(k, _)| *k == "prune").count();
+                        if n == 2
+                            && let Some(tx) = stop2.borrow_mut().take()
+                        {
+                            let _ = tx.send(());
+                        }
+                        let fail = prune_fails_first && n == 1;
+                        async move {
+                            if fail {
+                                Err::<(), _>("cannot remove /data/runs/x: busy".to_string())
+                            } else {
+                                Ok(())
+                            }
+                        }
+                    },
+                    async {
+                        let _ = stop_rx.await;
+                    },
+                )
+                .await;
+                assert!(result.is_ok());
+            })
+            .await;
+        log.borrow().clone()
+    }
+
+    #[tokio::test]
+    async fn daily_prune_fires_after_the_morning_run() {
+        let log = two_loops_log(false).await;
+        let expect = |d: u32, h: u32, m: u32| Utc.with_ymd_and_hms(2026, 9, d, h, m, 0).unwrap();
+        assert_eq!(
+            log,
+            vec![
+                ("run", expect(17, 6, 30)),
+                ("prune", expect(17, 7, 0)),
+                ("run", expect(18, 6, 30)),
+                ("prune", expect(18, 7, 0)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn prune_job_error_does_not_stop_serve() {
+        let log = two_loops_log(true).await;
+        assert_eq!(
+            log.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
+            ["run", "prune", "run", "prune"],
+            "the failing first prune stopped neither schedule"
+        );
     }
 }
