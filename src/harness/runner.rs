@@ -13,7 +13,9 @@ use super::claude_code::event_type;
 use super::types::{HarnessKind, HarnessRequest, RunOutcome};
 use super::verify::verify_digest_outcome;
 use crate::config::Config;
-use crate::core::time::{days_ago_iso, to_iso};
+use chrono_tz::Tz;
+
+use crate::core::time::{date_in_zone, days_ago_iso, to_iso};
 use crate::db::repo::{self, LockResult, NewRun, RunFinish, RunKind, RunStatus};
 use crate::db::{Db, DbError};
 use crate::editor::mcp_config::{McpConfigError, McpConfigVars, render};
@@ -45,10 +47,11 @@ pub struct RunSummary {
     pub structured_output: Option<serde_json::Value>,
 }
 
-/// `YYYY-MM-DD-<8 hex>`: the local-looking date prefix keeps run directories sortable.
-pub fn new_run_id(now: DateTime<Utc>) -> String {
+/// `YYYY-MM-DD-<8 hex>` with the date in the service timezone (`SPEC.md` §3): the 06:30 run in
+/// Ho Chi Minh fires at 23:30 UTC and must not be filed under the previous day.
+pub fn new_run_id(now: DateTime<Utc>, tz: Tz) -> String {
     let hex = uuid::Uuid::new_v4().simple().to_string();
-    format!("{}-{}", now.format("%Y-%m-%d"), &hex[..8])
+    format!("{}-{}", date_in_zone(now, tz), &hex[..8])
 }
 
 pub fn run_dir(data_dir: &Path, run_id: &str) -> PathBuf {
@@ -63,7 +66,9 @@ pub struct Runner {
     pub json_schema: serde_json::Value,
     pub user_message: String,
     pub now: fn() -> DateTime<Utc>,
-    pub new_id: fn(DateTime<Utc>) -> String,
+    pub new_id: fn(DateTime<Utc>, Tz) -> String,
+    /// The service timezone; run ids and digest dates are local dates.
+    pub tz: Tz,
     /// `false` accepts a harness success without a digest row (smoke runs only).
     pub verify: bool,
     /// 2 = retry once (the spec default); 1 for smoke runs.
@@ -152,7 +157,7 @@ impl Runner {
 
     async fn attempt(&self, kind: RunKind, attempt_no: u32) -> Result<AttemptEnd, RunnerError> {
         let started = (self.now)();
-        let run_id = (self.new_id)(started);
+        let run_id = (self.new_id)(started, self.tz);
         let dir = run_dir(&self.config.paths.data_dir, &run_id);
         tokio::fs::create_dir_all(&dir).await?;
         let transcript_path = dir.join("transcript.jsonl");
@@ -202,9 +207,16 @@ impl Runner {
                     file.write_all(raw.as_bytes()).await?;
                     file.write_all(b"\n").await?;
                     let (id, kind) = (run_id.clone(), event_type(&raw));
-                    db.call(move |conn| repo::append_run_event(conn, &id, seq as i64, &kind, &raw))
+                    // The file is the source of truth (`SPEC.md` §3): a database hiccup (a busy
+                    // writer, a dropped table) must not lose the rest of the transcript.
+                    if let Err(e) = db
+                        .call(move |conn| {
+                            repo::append_run_event(conn, &id, seq as i64, &kind, &raw)
+                        })
                         .await
-                        .map_err(std::io::Error::other)?;
+                    {
+                        tracing::error!(run_id = %run_id, seq, error = %e, "run_events insert failed; transcript file continues");
+                    }
                 }
                 file.flush().await?;
                 Ok::<(), std::io::Error>(())
@@ -284,4 +296,20 @@ impl Runner {
 /// The stored-form timestamp `days` before `now` (re-exported for the web layer's manual-run cap).
 pub fn since_days(now: DateTime<Utc>, days: u32) -> String {
     days_ago_iso(now, days)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn run_id_uses_the_service_local_date() {
+        let tz: Tz = "Asia/Ho_Chi_Minh".parse().unwrap();
+        // 23:30 UTC on the 21st is 06:30 on the 22nd in Ho Chi Minh: the scheduled run.
+        let at = Utc.with_ymd_and_hms(2026, 9, 21, 23, 30, 0).unwrap();
+        let id = new_run_id(at, tz);
+        assert!(id.starts_with("2026-09-22-"), "{id}");
+        assert_eq!(id.len(), "2026-09-22-".len() + 8);
+    }
 }

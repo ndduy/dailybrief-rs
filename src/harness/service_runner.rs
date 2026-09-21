@@ -37,6 +37,8 @@ pub enum ServiceRunnerError {
     Runner(#[from] RunnerError),
     #[error(transparent)]
     Db(#[from] crate::db::DbError),
+    #[error(transparent)]
+    Time(#[from] crate::core::time::TimeError),
 }
 
 pub struct ServiceRunnerOptions {
@@ -108,7 +110,9 @@ impl ServiceRunner {
                 path: schema_path,
                 source,
             })?;
+        let tz = crate::core::time::parse_tz(&config.service.timezone)?;
         let runner = Runner {
+            tz,
             db,
             system_prompt_path: opts
                 .system_prompt_path

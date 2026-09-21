@@ -60,8 +60,8 @@ fn script(dir: &Path, attempts: &[&str]) {
     }
 }
 
-fn ids() -> fn(DateTime<Utc>) -> String {
-    fn next(_: DateTime<Utc>) -> String {
+fn ids() -> fn(DateTime<Utc>, chrono_tz::Tz) -> String {
+    fn next(_: DateTime<Utc>, _: chrono_tz::Tz) -> String {
         use std::sync::atomic::{AtomicU32, Ordering};
         static N: AtomicU32 = AtomicU32::new(0);
         format!("2026-09-17-run{:04}", N.fetch_add(1, Ordering::SeqCst))
@@ -92,6 +92,7 @@ fn rig(attempts: &[&str], hang: bool, verify: bool, wall_clock: Duration) -> Rig
         user_message: "Build today's digest. Start with get_briefing.".into(),
         now,
         new_id: ids(),
+        tz: dailybrief::core::time::parse_tz("Asia/Ho_Chi_Minh").unwrap(),
         verify,
         max_attempts: 2,
         harness,
@@ -391,4 +392,26 @@ async fn lock_acquired_by_exactly_one_of_two_connections() {
         assert_eq!(wins, 1, "round {round}: {ra:?} / {rb:?}");
         a.with(|c| repo::release_lock(c)).unwrap();
     }
+}
+
+/// The transcript file is written even when run_events cannot be (ship review: one failed
+/// insert used to end the writer task and lose the rest of the file).
+#[tokio::test]
+async fn transcript_file_survives_run_events_failures() {
+    let r = rig(&["success.jsonl"], false, false, Duration::from_secs(10));
+    r.db.with(|c| {
+        c.execute_batch("DROP TABLE run_events")?;
+        Ok(())
+    })
+    .unwrap();
+    let summary = r.runner.run(RunKind::Manual).await.unwrap();
+    assert_eq!(summary.status, "success");
+    let row = run_row(&r.db, &summary.final_run_id);
+    let file = std::fs::read_to_string(row.transcript_path.unwrap()).unwrap();
+    let expected =
+        std::fs::read_to_string(root().join("tests/fixtures/transcripts/success.jsonl")).unwrap();
+    assert_eq!(
+        file.lines().count(),
+        expected.lines().filter(|l| !l.trim().is_empty()).count()
+    );
 }
