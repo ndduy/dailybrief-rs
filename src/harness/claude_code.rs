@@ -277,7 +277,7 @@ impl ClaudeCodeAdapter {
             );
         };
         // stderr is drained concurrently so a chatty child can never block on a full pipe.
-        let stderr_task = tokio::spawn(async move {
+        let mut stderr_task = tokio::spawn(async move {
             let mut tail: Vec<u8> = Vec::new();
             let mut reader = BufReader::new(stderr);
             let mut buf = [0u8; 4096];
@@ -314,20 +314,30 @@ impl ClaudeCodeAdapter {
                 }
             }
         };
-        let timed_out = tokio::time::timeout(self.wall_clock, read_stdout)
+        // One deadline covers the read loop *and* the wait after EOF: a child that closes its
+        // pipes and then hangs would otherwise hold the run lock (and the scheduler) forever.
+        let deadline = tokio::time::Instant::now() + self.wall_clock;
+        let timed_out = tokio::time::timeout_at(deadline, read_stdout)
             .await
             .is_err();
-        if timed_out {
+        let status = if timed_out {
+            None
+        } else {
+            match tokio::time::timeout_at(deadline, child.wait()).await {
+                Ok(status) => Some(status.ok()),
+                Err(_) => None,
+            }
+        };
+        let Some(status) = status else {
             terminate(&mut child, self.kill_grace).await;
-            let _ = stderr_task.await;
+            drain(&mut stderr_task, self.kill_grace).await;
             return RunOutcome::Killed {
                 message: format!("wall clock of {} s exceeded", self.wall_clock.as_secs()),
                 init,
             };
-        }
-        let status = child.wait().await.ok();
+        };
         let exit_code = status.and_then(|s| s.code());
-        let stderr_tail = stderr_task.await.unwrap_or_default();
+        let stderr_tail = drain(&mut stderr_task, self.kill_grace).await;
         match result {
             Some(r) if r.subtype == "success" && !r.is_error => {
                 RunOutcome::Success { result: r, init }
@@ -365,6 +375,18 @@ impl ClaudeCodeAdapter {
                     init,
                 },
             },
+        }
+    }
+}
+
+/// The stderr tail, or an empty string if the drain task does not end within `grace` (a
+/// grandchild that inherited the pipe keeps it open; the task is aborted so nothing leaks).
+async fn drain(task: &mut tokio::task::JoinHandle<String>, grace: Duration) -> String {
+    match tokio::time::timeout(grace, &mut *task).await {
+        Ok(Ok(tail)) => tail,
+        _ => {
+            task.abort();
+            String::new()
         }
     }
 }

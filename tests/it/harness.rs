@@ -253,3 +253,38 @@ async fn run_reports_a_missing_binary() {
         other => panic!("{other:?}"),
     }
 }
+
+/// A child that closes stdout and stderr and then hangs must still die at the wall clock: the
+/// deadline has to cover `wait()` after EOF, not only the read loop. (Found at the R0 ship
+/// review; before the fix this test hung forever and the scheduler with it.)
+#[tokio::test]
+async fn run_hang_after_stdout_close_is_still_killed() {
+    let t = fixture("no-result.jsonl");
+    let marker = tempfile::tempdir().unwrap();
+    let marker_path = marker.path().join("term");
+    let started = std::time::Instant::now();
+    let (outcome, lines) = tokio::time::timeout(
+        Duration::from_secs(6),
+        run_with(
+            &[
+                ("DAILYBRIEF_FAKE_TRANSCRIPT", t.to_str().unwrap()),
+                ("DAILYBRIEF_FAKE_HANG", "1"),
+                ("DAILYBRIEF_FAKE_CLOSE_STDOUT", "1"),
+                ("DAILYBRIEF_FAKE_TERM_MARKER", marker_path.to_str().unwrap()),
+            ],
+            Duration::from_millis(400),
+        ),
+    )
+    .await
+    .expect("the adapter returned before the safety timeout");
+    match outcome {
+        RunOutcome::Killed { message, init } => {
+            assert!(message.contains("wall clock"), "{message}");
+            assert!(init.is_some());
+        }
+        other => panic!("expected killed, got {other:?}"),
+    }
+    assert_eq!(lines.len(), 2, "the lines before the close were delivered");
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(marker_path.exists(), "SIGTERM was sent first");
+}

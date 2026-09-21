@@ -6,6 +6,7 @@
 #                                 (the last one when N is past the end); a `count` file tracks N
 #   DAILYBRIEF_FAKE_STDERR_BYTES  bytes of noise to write on stderr before anything else
 #   DAILYBRIEF_FAKE_HANG=1        after replaying, sleep until SIGTERM (exit 143) or SIGKILL
+#   DAILYBRIEF_FAKE_CLOSE_STDOUT=1  with HANG: close stdout and stderr first (a child that went quiet)
 #   DAILYBRIEF_FAKE_TERM_MARKER   file to create when SIGTERM is received (proves TERM before KILL)
 #   DAILYBRIEF_FAKE_EXIT          exit code when not hanging (default 0)
 set -u
@@ -23,6 +24,7 @@ elif [ -n "${DAILYBRIEF_FAKE_TRANSCRIPT:-}" ]; then
   cat "$DAILYBRIEF_FAKE_TRANSCRIPT"
 fi
 if [ "${DAILYBRIEF_FAKE_HANG:-}" = "1" ]; then
+  if [ "${DAILYBRIEF_FAKE_CLOSE_STDOUT:-}" = "1" ]; then exec 1>&- 2>&-; fi
   trap 'echo term > "${DAILYBRIEF_FAKE_TERM_MARKER:-/dev/null}"; exit 143' TERM
   while :; do sleep 0.05; done
 fi
