@@ -4,6 +4,7 @@
 pub mod fetch;
 pub mod mcp;
 pub mod migrate;
+pub mod prune;
 pub mod reembed;
 pub mod run;
 pub mod scan_transcript;
@@ -34,6 +35,8 @@ pub enum CommandError {
     Mcp(String),
     #[error(transparent)]
     Runner(#[from] crate::harness::runner::RunnerError),
+    #[error(transparent)]
+    Retention(#[from] crate::core::retention::RetentionError),
     #[error(transparent)]
     Env(#[from] crate::harness::claude_code::EnvError),
     #[error(transparent)]

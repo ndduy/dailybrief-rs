@@ -905,6 +905,30 @@ pub fn list_runs(conn: &Connection, limit: i64) -> Result<Vec<RunRow>, DbError> 
     Ok(rows)
 }
 
+/// Finished runs (not `running`) that started before `before`, oldest first: the prune set.
+pub fn list_runs_started_before(conn: &Connection, before: &str) -> Result<Vec<RunRow>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RUN_COLS} FROM runs WHERE started_at < ?1 AND status != 'running' ORDER BY started_at, id"
+    ))?;
+    let rows = stmt
+        .query_map([before], map_run)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn count_run_events(conn: &Connection, run_id: &str) -> Result<i64, DbError> {
+    Ok(conn.query_row(
+        "SELECT count(*) FROM run_events WHERE run_id = ?1",
+        [run_id],
+        |r| r.get(0),
+    )?)
+}
+
+/// Deletes a run's events (retention); the `runs` row is never deleted.
+pub fn delete_run_events(conn: &Connection, run_id: &str) -> Result<usize, DbError> {
+    Ok(conn.execute("DELETE FROM run_events WHERE run_id = ?1", [run_id])?)
+}
+
 /// Runs of `kind` started at or after `since`.
 pub fn count_runs_since(conn: &Connection, kind: RunKind, since: &str) -> Result<i64, DbError> {
     Ok(conn.query_row(

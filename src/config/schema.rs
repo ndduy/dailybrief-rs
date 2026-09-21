@@ -24,6 +24,27 @@ pub struct ConfigFile {
     pub embeddings: EmbeddingsFile,
     #[serde(default)]
     pub harness: HarnessFile,
+    #[serde(default)]
+    pub retention: RetentionFile,
+}
+
+/// `[retention]`: run directories and `run_events` older than `days` are pruned by the daily
+/// job at `cron` (service timezone); `runs` rows are never pruned (ADR 0013).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetentionFile {
+    #[serde(default = "d_retention_days")]
+    pub days: u32,
+    #[serde(default = "d_retention_cron")]
+    pub cron: String,
+}
+impl Default for RetentionFile {
+    fn default() -> Self {
+        Self {
+            days: d_retention_days(),
+            cron: d_retention_cron(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -193,6 +214,14 @@ fn d_data_dir() -> String {
 fn d_cron() -> String {
     "30 6 * * *".to_string()
 }
+fn d_retention_days() -> u32 {
+    60
+}
+fn d_retention_cron() -> String {
+    "0 7 * * *".to_string()
+}
+/// Below this the window would not even cover a week of failed mornings.
+pub const MIN_RETENTION_DAYS: u32 = 7;
 fn d_reads() -> u32 {
     45
 }
@@ -359,6 +388,12 @@ pub struct Schedule {
     pub cron: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Retention {
+    pub days: u32,
+    pub cron: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Caps {
     pub reads: u32,
@@ -426,6 +461,7 @@ pub struct Config {
     pub ingest: Ingest,
     pub embeddings: Embeddings,
     pub harness: HarnessSettings,
+    pub retention: Retention,
     pub paths: Paths,
 }
 
@@ -489,6 +525,21 @@ impl TryFrom<ConfigFile> for Config {
                 format!("schedule.cron '{}' is invalid: {e}", f.schedule.cron),
             ));
         }
+        if let Err(e) = croner::Cron::from_str(&f.retention.cron) {
+            return Err(invalid(
+                FILE,
+                format!("retention.cron '{}' is invalid: {e}", f.retention.cron),
+            ));
+        }
+        if f.retention.days < MIN_RETENTION_DAYS {
+            return Err(invalid(
+                FILE,
+                format!(
+                    "retention.days must be at least {MIN_RETENTION_DAYS}, got {}",
+                    f.retention.days
+                ),
+            ));
+        }
         let c = &f.caps;
         for (name, value) in [
             ("caps.reads", c.reads),
@@ -540,6 +591,10 @@ impl TryFrom<ConfigFile> for Config {
             },
             schedule: Schedule {
                 cron: f.schedule.cron,
+            },
+            retention: Retention {
+                days: f.retention.days,
+                cron: f.retention.cron,
             },
             caps: Caps {
                 reads: c.reads,

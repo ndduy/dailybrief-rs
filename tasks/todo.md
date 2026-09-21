@@ -152,14 +152,14 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `retention::plan(conn, data_dir, now, days) -> Vec<PruneItem>` lists runs older than `days` (by `started_at`, never `status = running`), and `retention::apply(items, dry_run)` deletes in order: transcript file, run directory, `run_events` rows (one `repo::delete_run_events(run_id)`), never the `runs` row; returns counts. The verb prints the plan as JSON and, without `--dry-run`, applies it. `[retention] days = 60` in config (default 60, min 7).
 
 **Acceptance criteria:**
-- [ ] test: `prune_keeps_runs_rows_and_recent_runs` (three runs 30 / 61 / 400 days old on a temp data dir: two directories and their events gone, three rows stay, the 30-day run untouched).
-- [ ] test: `prune_dry_run_deletes_nothing`; `prune_skips_running_runs`; `prune_tolerates_a_missing_directory` (rows still deleted).
-- [ ] test: config `retention_days_below_seven_is_rejected`.
+- [x] test: `prune_keeps_runs_rows_and_recent_runs` (three runs 30 / 61 / 400 days old: two directories and four events gone, oldest first; three rows stay; the 30-day run untouched).
+- [x] test: `prune_dry_run_deletes_nothing`; `prune_skips_running_runs`; `prune_tolerates_a_missing_directory` (rows still deleted); `cutoff_is_days_before_now`.
+- [x] test: config `retention_days_below_seven_is_rejected` (and the defaults 60 / `0 7 * * *`).
 
 **Verification:**
-- [ ] `bin/dc cargo test retention`
-- [ ] `bin/dc bin/check task`
-- [ ] `bin/dc cargo run -- prune --dry-run` on a temp data dir prints an empty plan
+- [x] `bin/dc cargo test retention`
+- [x] `bin/dc bin/check task`
+- [x] `bin/dc cargo run -- prune --dry-run` on a temp data dir prints an empty plan
 
 **Dependencies:** None
 **Files likely touched:** `src/core/retention.rs`, `src/core/mod.rs`, `src/db/repo.rs`, `src/commands/prune.rs`, `src/main.rs`, `src/config/schema.rs`, `config/config.toml`, `docs/adr/0013-retention.md`

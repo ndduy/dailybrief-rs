@@ -11,6 +11,10 @@ data_dir = "data"           # relative to the project root (the parent of config
 [schedule]
 cron = "30 6 * * *"         # morning run, in service.timezone
 
+[retention]
+days = 60                   # run directories and run_events older than this are pruned by the daily job; runs rows stay (ADR 0013)
+cron = "0 7 * * *"          # the prune job, after the morning run window, in service.timezone
+
 [caps]                      # digest contract, spec/m1.md §8.2
 reads = 45
 for_you = 24

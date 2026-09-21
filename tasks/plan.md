@@ -70,7 +70,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 - [x] Task 7: SIGKILL-after-grace and killed-run transcript tests; fourth publish after `fatal` refused
 
 ### Phase 4: Retention (`retention`)
-- [ ] Task 8: `core::retention` and `dailybrief prune [--days] [--dry-run]` (ADR 0013)
+- [x] Task 8: `core::retention` and `dailybrief prune [--days] [--dry-run]` (ADR 0013)
 - [ ] Task 9: Daily prune job in `serve` (`[retention]` config; 07:00 local)
 
 ### Checkpoint C

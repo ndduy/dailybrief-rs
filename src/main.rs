@@ -50,6 +50,15 @@ enum Command {
     Serve,
     /// Re-embed every item and topic with the current model (first deployment).
     Reembed,
+    /// Remove run directories and run_events older than the retention window; runs rows stay.
+    Prune {
+        /// Window in days (default: [retention].days, 60; never below 7).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(7..))]
+        days: Option<u32>,
+        /// List what would be removed without removing it.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Egress scan of a run transcript; exit 1 on any finding.
     ScanTranscript {
         /// Path to transcript.jsonl
@@ -118,6 +127,10 @@ async fn main() -> anyhow::Result<()> {
         Command::Serve => {
             let process_env: std::collections::HashMap<String, String> = std::env::vars().collect();
             commands::serve::run(&env, &process_env).await?;
+        }
+        Command::Prune { days, dry_run } => {
+            let code = commands::prune::run(&env, days, dry_run, &mut std::io::stdout()).await?;
+            std::process::exit(code);
         }
         Command::ScanTranscript { path } => {
             let code = commands::scan_transcript::run(&env, &path, &mut std::io::stdout()).await?;

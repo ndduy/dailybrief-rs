@@ -219,6 +219,30 @@ mod tests {
     }
 
     #[test]
+    fn retention_days_below_seven_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            "config/config.toml",
+            "[service]\ntimezone = \"UTC\"\n[retention]\ndays = 3\n",
+        );
+        let env = env_with(&[("DAILYBRIEF_CONFIG", path.to_str().unwrap())]);
+        let err = load_config(&env).unwrap_err();
+        assert!(err.to_string().contains("retention.days"), "{err}");
+        let ok = write(
+            dir.path(),
+            "config/config.toml",
+            "[service]\ntimezone = \"UTC\"\n",
+        );
+        let env = env_with(&[("DAILYBRIEF_CONFIG", ok.to_str().unwrap())]);
+        let cfg = load_config(&env).unwrap();
+        assert_eq!(
+            (cfg.retention.days, cfg.retention.cron.as_str()),
+            (60, "0 7 * * *")
+        );
+    }
+
+    #[test]
     fn rejects_bad_timezone() {
         let dir = tempfile::tempdir().unwrap();
         let path = write(
