@@ -993,35 +993,39 @@ pub fn try_acquire_lock(
     now: &str,
     stale_before: &str,
 ) -> Result<LockResult, DbError> {
-    let existing: Option<(String, String)> = conn
+    // One statement, so two connections racing (the CLI against the service) cannot both win:
+    // the upsert takes the row when it is absent or stale, and changes 0 rows otherwise.
+    let changed = conn.execute(
+        "INSERT INTO run_lock (id, run_id, acquired_at) VALUES (1, ?1, ?2) \
+         ON CONFLICT(id) DO UPDATE SET run_id = excluded.run_id, acquired_at = excluded.acquired_at \
+         WHERE run_lock.acquired_at < ?3",
+        params![holder, now, stale_before],
+    )?;
+    if changed == 1 {
+        return Ok(LockResult::Acquired);
+    }
+    match current_lock(conn)? {
+        Some((run_id, acquired_at)) => Ok(LockResult::Held {
+            run_id,
+            acquired_at,
+        }),
+        // The holder released between our upsert and this read; the caller simply retries.
+        None => Ok(LockResult::Held {
+            run_id: String::new(),
+            acquired_at: String::new(),
+        }),
+    }
+}
+
+/// The lock row as it is, if any: `(run_id, acquired_at)`.
+pub fn current_lock(conn: &Connection) -> Result<Option<(String, String)>, DbError> {
+    Ok(conn
         .query_row(
             "SELECT run_id, acquired_at FROM run_lock WHERE id = 1",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
-        .optional()?;
-    match existing {
-        Some((run_id, acquired_at)) if acquired_at.as_str() >= stale_before => {
-            Ok(LockResult::Held {
-                run_id,
-                acquired_at,
-            })
-        }
-        Some(_) => {
-            conn.execute(
-                "UPDATE run_lock SET run_id = ?1, acquired_at = ?2 WHERE id = 1",
-                params![holder, now],
-            )?;
-            Ok(LockResult::Acquired)
-        }
-        None => {
-            conn.execute(
-                "INSERT INTO run_lock (id, run_id, acquired_at) VALUES (1, ?1, ?2)",
-                params![holder, now],
-            )?;
-            Ok(LockResult::Acquired)
-        }
-    }
+        .optional()?)
 }
 
 pub fn release_lock(conn: &Connection) -> Result<(), DbError> {

@@ -114,6 +114,22 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> Respons
             json!({ "error": "a run is already in progress" }),
         );
     }
+    // A scheduled run (or the CLI) holds only the database lock: answer 409 now instead of
+    // accepting a run that would be refused a moment later.
+    match runner.lock_holder().await {
+        Ok(None) => {}
+        Ok(Some(holder)) => {
+            state.active.store(false, Ordering::SeqCst);
+            return reply_or_home(
+                StatusCode::CONFLICT,
+                json!({ "error": "a run is already in progress", "heldBy": holder }),
+            );
+        }
+        Err(e) => {
+            state.active.store(false, Ordering::SeqCst);
+            return internal(e);
+        }
+    }
     let active = Arc::clone(&state.active);
     tokio::spawn(async move {
         match runner.run(RunKind::Manual).await {

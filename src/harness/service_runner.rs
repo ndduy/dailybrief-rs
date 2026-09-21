@@ -137,6 +137,12 @@ impl ServiceRunner {
         Ok(self.runner.run(kind).await?)
     }
 
+    /// The live holder of the run lock, if any (scheduled runs hold it without touching the
+    /// web layer's `active` flag).
+    pub async fn lock_holder(&self) -> Result<Option<String>, ServiceRunnerError> {
+        Ok(self.runner.lock_holder().await?)
+    }
+
     pub fn now(&self) -> DateTime<Utc> {
         (self.runner.now)()
     }

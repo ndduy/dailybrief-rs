@@ -78,11 +78,25 @@ struct AttemptEnd {
 }
 
 impl Runner {
+    /// Holders older than `2 × wall clock + 5 min` are stale and may be taken over.
+    fn stale_before(&self, now: DateTime<Utc>) -> String {
+        let stale_minutes = 2 * self.config.harness.claude_code.wall_clock_minutes + 5;
+        to_iso(now - chrono::Duration::minutes(i64::from(stale_minutes)))
+    }
+
+    /// The live holder of the run lock, if any (a stale holder counts as none).
+    pub async fn lock_holder(&self) -> Result<Option<String>, RunnerError> {
+        let stale_before = self.stale_before((self.now)());
+        let lock = self.db.call(|conn| repo::current_lock(conn)).await?;
+        Ok(lock
+            .filter(|(_, acquired_at)| acquired_at.as_str() >= stale_before.as_str())
+            .map(|(run_id, _)| run_id))
+    }
+
     /// Runs the harness, retrying once from a fresh context; refuses when a live run holds the lock.
     pub async fn run(&self, kind: RunKind) -> Result<RunSummary, RunnerError> {
         let started = (self.now)();
-        let stale_minutes = 2 * self.config.harness.claude_code.wall_clock_minutes + 5;
-        let stale_before = to_iso(started - chrono::Duration::minutes(i64::from(stale_minutes)));
+        let stale_before = self.stale_before(started);
         let holder = format!("{}@{}", kind.as_str(), to_iso(started));
         let now_iso = to_iso(started);
         let lock = self

@@ -603,3 +603,30 @@ async fn pages_are_full_width_and_link_to_the_runs_index_and_run_log() {
     let (_, _, body) = get(db, "/d/2026-09-17").await;
     assert!(body.contains("/runs/2026-09-17-fail/log"));
 }
+
+/// A scheduled run holds only the database lock; POST /run must say 409 rather than 202 and
+/// then quietly do nothing.
+#[tokio::test]
+async fn post_run_409_when_the_db_lock_is_held_by_a_scheduled_run() {
+    let db = Db::open_in_memory().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    db.with(|c| {
+        repo::try_acquire_lock(c, "scheduled@now", &now, "2000-01-01T00:00:00.000Z")?;
+        Ok(())
+    })
+    .unwrap();
+    let st = state_with_runner(db, tmp.path(), false);
+    let (status, _, body) = send(st.clone(), post_run(true, &[])).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("scheduled@now"), "{body}");
+    let (_, _, body) = send(
+        st,
+        Request::builder()
+            .uri("/run/status")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(body, "{\"active\":false}", "the flag is released again");
+}

@@ -347,3 +347,48 @@ async fn two_db_handles_write_one_file_concurrently() {
             .is_some()
     );
 }
+
+/// Two connections (the CLI against the service) racing for the lock: exactly one wins each
+/// round, whether the row is absent or stale. (R0 ship review: the SELECT-then-INSERT version
+/// let both take over a stale lock and spend two runs.)
+#[tokio::test]
+async fn lock_acquired_by_exactly_one_of_two_connections() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("brief.db");
+    let a = Db::open(&path).unwrap();
+    let b = Db::open(&path).unwrap();
+    for round in 0..50 {
+        if round % 2 == 1 {
+            // Odd rounds start from a stale holder instead of an empty table.
+            a.with(|c| {
+                repo::try_acquire_lock(
+                    c,
+                    "stale",
+                    "2026-09-17T05:00:00.000Z",
+                    "2026-09-17T04:00:00.000Z",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        }
+        let acquire = |db: Db, who: &'static str| async move {
+            db.call(move |c| {
+                repo::try_acquire_lock(
+                    c,
+                    who,
+                    "2026-09-17T06:00:00.000Z",
+                    "2026-09-17T05:30:00.000Z",
+                )
+            })
+            .await
+            .unwrap()
+        };
+        let (ra, rb) = tokio::join!(acquire(a.clone(), "a"), acquire(b.clone(), "b"));
+        let wins = [&ra, &rb]
+            .into_iter()
+            .filter(|r| matches!(r, repo::LockResult::Acquired))
+            .count();
+        assert_eq!(wins, 1, "round {round}: {ra:?} / {rb:?}");
+        a.with(|c| repo::release_lock(c)).unwrap();
+    }
+}
