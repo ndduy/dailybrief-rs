@@ -79,6 +79,8 @@ pub fn router(state: AppState) -> Router {
         .route("/r/{id}", get(routes::redirect::click))
         .route("/run", post(routes::run::start))
         .route("/run/status", get(routes::run::status))
+        .route("/runs", get(routes::log::index))
+        .route("/runs/{id}/log", get(routes::log::show))
         .route("/runs/{id}/transcript", get(routes::transcript::download))
         .fallback(routes::not_found)
         .layer(middleware::from_fn_with_state(

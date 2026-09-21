@@ -894,6 +894,17 @@ pub fn latest_run(conn: &Connection) -> Result<Option<RunRow>, DbError> {
         .optional()?)
 }
 
+/// The most recent `limit` runs, newest first.
+pub fn list_runs(conn: &Connection, limit: i64) -> Result<Vec<RunRow>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RUN_COLS} FROM runs ORDER BY started_at DESC, id DESC LIMIT ?1"
+    ))?;
+    let rows = stmt
+        .query_map([limit], map_run)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 /// Runs of `kind` started at or after `since`.
 pub fn count_runs_since(conn: &Connection, kind: RunKind, since: &str) -> Result<i64, DbError> {
     Ok(conn.query_row(

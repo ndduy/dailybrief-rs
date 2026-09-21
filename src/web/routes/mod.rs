@@ -1,6 +1,7 @@
 //! Route handlers. Each one maps a request onto repo calls inside one `Db::call` and a view.
 
 pub mod digest;
+pub mod log;
 pub mod redirect;
 pub mod run;
 pub mod transcript;

@@ -9,7 +9,7 @@ const CSS: &str = r#"
 :root{color-scheme:light dark;--fg:#1a1a1a;--bg:#fff;--muted:#666;--line:#e5e5e5;--badge:#eef}
 @media(prefers-color-scheme:dark){:root{--fg:#eee;--bg:#111;--muted:#aaa;--line:#333;--badge:#223}}
 *{box-sizing:border-box}
-body{margin:0;padding:0 16px 48px;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg);max-width:42rem;margin-inline:auto}
+body{margin:0;padding:0 16px 48px;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg)}
 header{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:1rem 0;border-bottom:1px solid var(--line)}
 h1{font-size:1.25rem;margin:0}h2{font-size:1rem;margin:1.5rem 0 .5rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 article{padding:.75rem 0;border-bottom:1px solid var(--line)}
@@ -19,9 +19,16 @@ article h3{font-size:1.05rem;margin:0 0 .25rem}article h3 a{color:inherit;text-d
 .state{padding:2rem 0;text-align:center;color:var(--muted)}
 button{font:inherit;padding:.4rem .9rem;border:1px solid var(--line);border-radius:.4rem;background:var(--bg);color:var(--fg)}
 pre{white-space:pre-wrap;word-break:break-word;font-size:.85rem}
+.actions{display:flex;gap:.75rem;align-items:center}.actions a{color:var(--muted)}
 "#;
 
 pub fn page(title: &str, body: Markup) -> Markup {
+    page_with_css(title, "", body)
+}
+
+/// The shell plus page-specific CSS; the digest page stays under its size cap by carrying
+/// only the shared rules.
+pub fn page_with_css(title: &str, extra_css: &str, body: Markup) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -30,7 +37,7 @@ pub fn page(title: &str, body: Markup) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 meta name="referrer" content="no-referrer";
                 title { (title) }
-                style { (maud::PreEscaped(CSS)) }
+                style { (maud::PreEscaped(CSS)) (maud::PreEscaped(extra_css)) }
                 script src=(HTMX_SRC) defer {}
             }
             body { (body) }
@@ -38,11 +45,20 @@ pub fn page(title: &str, body: Markup) -> Markup {
     }
 }
 
-/// The Refresh button: `POST /run` through htmx, then reload to show the running state.
+/// The header actions: the runs index and the Refresh button (`POST /run` through htmx, then
+/// reload to show the running state).
 pub fn refresh_button() -> Markup {
     html! {
-        form method="post" action="/run" hx-post="/run" hx-swap="none" hx-on--after-request="location.reload()" {
-            button type="submit" { "Refresh" }
+        div.actions {
+            a href="/runs" { "Runs" }
+            form method="post" action="/run" hx-post="/run" hx-swap="none" hx-on--after-request="location.reload()" {
+                button type="submit" { "Refresh" }
+            }
         }
     }
+}
+
+/// The header actions without the Refresh button (a run is already going).
+pub fn runs_link() -> Markup {
+    html! { div.actions { a href="/runs" { "Runs" } } }
 }

@@ -2,4 +2,5 @@
 
 pub mod digest;
 pub mod layout;
+pub mod log;
 pub mod state;

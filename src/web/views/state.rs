@@ -2,7 +2,7 @@
 
 use maud::{Markup, html};
 
-use super::layout::{page, refresh_button};
+use super::layout::{page, refresh_button, runs_link};
 use crate::db::repo::RunRow;
 
 pub fn failed(date: &str, run: &RunRow) -> Markup {
@@ -15,6 +15,7 @@ pub fn failed(date: &str, run: &RunRow) -> Markup {
                 @if let Some(e) = &run.error { pre { (e) } }
                 p.meta {
                     "Run " (run.id) " (" (run.status.as_str()) ", attempt " (run.attempt) ") · "
+                    a href={ "/runs/" (run.id) "/log" } { "log" } " · "
                     a href={ "/runs/" (run.id) "/transcript" } { "transcript" }
                 }
             }
@@ -26,10 +27,13 @@ pub fn running(date: &str, run: &RunRow) -> Markup {
     page(
         &format!("Run in progress · {date}"),
         html! {
-            header { h1 { "Daily Brief " span.meta { (date) } } }
+            header { h1 { "Daily Brief " span.meta { (date) } } (runs_link()) }
             main.state {
                 p { "Run in progress." }
-                p.meta { "Run " (run.id) " started " (run.started_at) "." }
+                p.meta {
+                    "Run " (run.id) " started " (run.started_at) " · "
+                    a href={ "/runs/" (run.id) "/log" } { "log" }
+                }
             }
         },
     )

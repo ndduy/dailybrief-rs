@@ -487,3 +487,119 @@ async fn post_run_409_when_active_and_run_status_reflects_it() {
     );
     assert_eq!(headers[header::LOCATION], "/");
 }
+
+#[tokio::test]
+async fn runs_index_lists_newest_first_with_log_links() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-16-old1", RunStatus::Failed, Some("boom"));
+    db.with(|c| {
+        repo::insert_run(
+            c,
+            &NewRun {
+                id: "2026-09-17-new1".into(),
+                kind: RunKind::Manual,
+                harness: "claude-code".into(),
+                attempt: 1,
+                started_at: "2026-09-17T01:00:00.000Z".into(),
+                transcript_path: None,
+            },
+        )
+    })
+    .unwrap();
+    let (status, _, body) = get(db, "/runs").await;
+    assert_eq!(status, StatusCode::OK);
+    let new = body
+        .find("/runs/2026-09-17-new1/log")
+        .expect("link to the newer run");
+    let old = body
+        .find("/runs/2026-09-16-old1/log")
+        .expect("link to the older run");
+    assert!(new < old, "newest first");
+    assert!(body.contains("status-running") && body.contains("status-failed"));
+    assert!(body.contains("boom"));
+}
+
+#[tokio::test]
+async fn run_log_renders_events_in_order_reloads_while_running_and_unknown_is_404() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-done", RunStatus::Success, None);
+    db.with(|c| {
+        repo::insert_run(
+            c,
+            &NewRun {
+                id: "2026-09-17-live".into(),
+                kind: RunKind::Manual,
+                harness: "claude-code".into(),
+                attempt: 1,
+                started_at: "2026-09-17T01:00:00.000Z".into(),
+                transcript_path: None,
+            },
+        )?;
+        repo::append_run_event(
+            c,
+            "2026-09-17-done",
+            1,
+            "system",
+            r#"{"type":"system","subtype":"init","model":"claude-opus-5","tools":["WebSearch"],"mcp_servers":[{"name":"dailybrief","status":"connected"}]}"#,
+        )?;
+        repo::append_run_event(
+            c,
+            "2026-09-17-done",
+            2,
+            "assistant",
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__dailybrief__get_briefing","input":{}}]}}"#,
+        )?;
+        repo::append_run_event(
+            c,
+            "2026-09-17-done",
+            3,
+            "result",
+            r#"{"type":"result","subtype":"success","num_turns":3,"duration_ms":4000}"#,
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let (status, _, body) = get(db.clone(), "/runs/2026-09-17-done/log").await;
+    assert_eq!(status, StatusCode::OK);
+    let init = body
+        .find("init · model claude-opus-5 · 1 tools · mcp: dailybrief (connected)")
+        .unwrap();
+    let call = body.find("→ get_briefing {}").unwrap();
+    let result = body.find("result · success · 3 turns · 4 s").unwrap();
+    assert!(init < call && call < result, "events in seq order");
+    assert!(body.contains("/runs/2026-09-17-done/transcript"));
+    assert!(
+        !body.contains("http-equiv=\"refresh\""),
+        "finished runs do not reload"
+    );
+
+    let (status, _, body) = get(db.clone(), "/runs/2026-09-17-live/log").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("No events yet."));
+    assert!(body.contains("http-equiv=\"refresh\" content=\"15\""));
+
+    let (status, _, _) = get(db, "/runs/nope/log").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn pages_are_full_width_and_link_to_the_runs_index_and_run_log() {
+    let db = Db::open_in_memory().unwrap();
+    published(&db);
+    let (_, _, body) = get(db.clone(), "/d/2026-09-17").await;
+    let css_body_rule = body
+        .split("body{")
+        .nth(1)
+        .and_then(|s| s.split('}').next())
+        .expect("a body rule in the inline CSS");
+    assert!(
+        !css_body_rule.contains("max-width"),
+        "full width: {css_body_rule}"
+    );
+    assert!(body.contains("href=\"/runs\""));
+    // run_row starts on 2026-09-17 local; a fresh database so no digest shadows the state.
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-fail", RunStatus::Failed, Some("x"));
+    let (_, _, body) = get(db, "/d/2026-09-17").await;
+    assert!(body.contains("/runs/2026-09-17-fail/log"));
+}
