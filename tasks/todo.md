@@ -72,14 +72,14 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** `src/web/routes/runs.rs` (`/runs` index moves here from `routes/log.rs`; new `show` for `/runs/{id}`) and `src/web/views/run.rs`: header with the caps bar (`reads 33/45 · selects 31/30 · web 8/5 · turns 78/120 · 8:20/15:00`, each hit cap marked), the retry chain (attempt 1 failed: reason → attempt 2 success), links to `/runs/{id}/log` and the transcript; one row per turn (n, time since previous, tool with short name, args summary ≤ 120 chars, result chars, tokens). `/runs` gains turns and wall-clock columns. The failed and running states on `/d/{date}` show the caps bar and link the run page. Page-specific CSS injected like the log page; the digest page stays under 15 KiB.
 
 **Acceptance criteria:**
-- [ ] test: `run_page_renders_caps_retry_and_every_turn` (insta snapshot of the turn table for the fixture; the caps bar text; a hit cap carries `class="hit"`).
-- [ ] test: `run_page_for_a_running_run_reloads` (meta refresh) and `unknown_run_is_404`; `runs_index_shows_turns_and_wall`.
-- [ ] test: `failed_state_shows_the_caps_bar_and_run_link`; `digest_page_size_cap_holds` (existing 15 KiB assertion) and `run_page_under_64_kib` for a 120-turn synthetic run.
+- [x] test: `run_page_renders_caps_retry_and_every_turn` (insta snapshot `run_page_turns` of the 77-row table; caps bar `reads 32/45 · selects 31/30 (hit) · web 0/5 · turns 77/120 · 8:20/15:00 · attempt 1 of 2`).
+- [x] test: `run_page_for_a_running_run_reloads_and_unknown_run_is_404`; `runs_index_shows_turns_and_wall_and_links_the_run_page`.
+- [x] test: `failed_state_shows_the_caps_bar_and_run_link`; the existing 15 KiB digest assertion still holds; `run_page_under_64_kib_for_120_turns`.
 
 **Verification:**
-- [ ] `bin/dc cargo test web`
-- [ ] `bin/dc bin/check task`
-- [ ] Manual: phone-width screenshot of `/runs/{id}` on a seeded temp DB (task note)
+- [x] `bin/dc cargo test web`
+- [x] `bin/dc bin/check task`
+- [ ] Manual: phone-width screenshot of `/runs/{id}` (Checkpoint B, on the live site after the deploy)
 
 **Dependencies:** Task 2
 **Files likely touched:** `src/web/routes/runs.rs`, `src/web/routes/log.rs`, `src/web/routes/mod.rs`, `src/web/views/run.rs`, `src/web/views/state.rs`, `src/web/app.rs`, `tests/it/web.rs`

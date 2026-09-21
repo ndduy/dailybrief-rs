@@ -4,6 +4,7 @@ pub mod digest;
 pub mod log;
 pub mod redirect;
 pub mod run;
+pub mod runs;
 pub mod transcript;
 
 use axum::http::StatusCode;

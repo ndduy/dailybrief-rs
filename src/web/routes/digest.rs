@@ -34,18 +34,26 @@ async fn render_day(state: &AppState, date: &str) -> Response {
                 let cards = repo::list_digest_cards(conn, &digest.id)?;
                 return Ok((Some((digest, cards)), None));
             }
-            Ok((None, repo::latest_run_between(conn, &from, &to)?))
+            let run = repo::latest_run_between(conn, &from, &to)?;
+            let events = match &run {
+                Some(r) => repo::list_run_events(conn, &r.id)?,
+                None => Vec::new(),
+            };
+            Ok((None, run.map(|r| (r, events))))
         })
         .await;
     match loaded {
         Err(e) => internal(e),
         Ok((Some((digest, cards)), _)) => views::digest::render(&digest, &cards).into_response(),
-        Ok((None, Some(run))) => match run.status {
-            RunStatus::Running => views::state::running(date, &run).into_response(),
-            RunStatus::Failed | RunStatus::Killed | RunStatus::Success => {
-                views::state::failed(date, &run).into_response()
+        Ok((None, Some((run, events)))) => {
+            let caps = super::runs::caps_of(&state.config, &events);
+            match run.status {
+                RunStatus::Running => views::state::running(date, &run, &caps).into_response(),
+                RunStatus::Failed | RunStatus::Killed | RunStatus::Success => {
+                    views::state::failed(date, &run, &caps).into_response()
+                }
             }
-        },
+        }
         Ok((None, None)) => views::state::none(date).into_response(),
     }
 }

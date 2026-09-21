@@ -3,4 +3,5 @@
 pub mod digest;
 pub mod layout;
 pub mod log;
+pub mod run;
 pub mod state;

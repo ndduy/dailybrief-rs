@@ -58,7 +58,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 - [ ] Review with human
 
 ### Phase 2: Run view (`run-view`)
-- [ ] Task 4: `/runs/{id}` page (caps bar, retry chain, turn table); `/runs` columns; failed-state caps bar
+- [x] Task 4: `/runs/{id}` page (caps bar, retry chain, turn table); `/runs` columns; failed-state caps bar
 - [ ] Task 5: `dailybrief run --max-turns <n>`; forced-failure rendering against the fake
 
 ### Checkpoint B

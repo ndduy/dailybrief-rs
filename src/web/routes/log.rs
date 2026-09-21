@@ -1,5 +1,5 @@
-//! `/runs` and `/runs/{id}/log`: the run index and one run's event log, rendered from `runs` and
-//! `run_events` (the same rows the runner writes as the harness streams).
+//! `/runs/{id}/log`: one run's raw event log, rendered from `run_events` (the same rows the
+//! runner writes as the harness streams). The index and the turn view live in `routes::runs`.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -8,18 +8,7 @@ use axum::response::{Html, IntoResponse, Response};
 use super::internal;
 use crate::db::repo;
 use crate::web::app::AppState;
-use crate::web::views::log::{INDEX_LIMIT, render_index, render_log};
-
-pub async fn index(State(state): State<AppState>) -> Response {
-    match state
-        .db
-        .call(|conn| repo::list_runs(conn, INDEX_LIMIT))
-        .await
-    {
-        Ok(runs) => Html(render_index(&runs).into_string()).into_response(),
-        Err(e) => internal(e),
-    }
-}
+use crate::web::views::log::render_log;
 
 pub async fn show(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     let lookup = id.clone();

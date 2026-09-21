@@ -1,4 +1,4 @@
-//! The run log pages: `/runs` (recent runs) and `/runs/{id}/log` (one run's events, one line per
+//! The raw run log page `/runs/{id}/log` (one run's events, one line per
 //! `stream-json` event with a readable summary and the payload behind a disclosure). Built from
 //! `run_events`, so it is the same data the egress scan and the transcript download see.
 
@@ -12,9 +12,6 @@ use crate::db::repo::{RunEvent, RunRow, RunStatus};
 const SUMMARY_CHARS: usize = 300;
 /// Characters kept in the expanded payload.
 const DETAIL_CHARS: usize = 4000;
-/// Rows on the runs index.
-pub const INDEX_LIMIT: i64 = 30;
-
 /// Styles only these pages need (the digest page has a size cap).
 const CSS: &str = r#"
 table{border-collapse:collapse;width:100%;font-size:.9rem}td,th{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
@@ -186,37 +183,6 @@ pub fn render_log(run: &RunRow, events: &[RunEvent]) -> Markup {
     } else {
         page_with_css(&title, CSS, body)
     }
-}
-
-/// `/runs`: the most recent runs, newest first, each linking to its log.
-pub fn render_index(runs: &[RunRow]) -> Markup {
-    page_with_css(
-        "Runs",
-        CSS,
-        html! {
-            header { h1 { "Runs" } (runs_link()) }
-            main {
-                @if runs.is_empty() { p.state { "No runs yet." } }
-                @else {
-                    table {
-                        thead { tr { th { "Run" } th { "Status" } th { "Kind" } th { "Started" } th { "Turns" } th { "Error" } } }
-                        tbody {
-                            @for r in runs {
-                                tr {
-                                    td { a href={ "/runs/" (r.id) "/log" } { (r.id) } }
-                                    td { span class=(status_class(r.status)) { (r.status.as_str()) } }
-                                    td { (r.kind) " #" (r.attempt) }
-                                    td { (r.started_at) }
-                                    td { @if let Some(t) = r.turns { (t) } }
-                                    td { @if let Some(e) = &r.error { (truncate(e, 120)) } }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-    )
 }
 
 #[cfg(test)]

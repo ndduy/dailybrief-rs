@@ -3,9 +3,11 @@
 use maud::{Markup, html};
 
 use super::layout::{page, refresh_button, runs_link};
+use super::run::caps_bar;
 use crate::db::repo::RunRow;
+use crate::harness::trajectory::CapsUsed;
 
-pub fn failed(date: &str, run: &RunRow) -> Markup {
+pub fn failed(date: &str, run: &RunRow, caps: &CapsUsed) -> Markup {
     page(
         &format!("No digest · {date}"),
         html! {
@@ -13,8 +15,10 @@ pub fn failed(date: &str, run: &RunRow) -> Markup {
             main.state {
                 p { "No digest — run failed." }
                 @if let Some(e) = &run.error { pre { (e) } }
+                (caps_bar(caps, run.attempt))
                 p.meta {
-                    "Run " (run.id) " (" (run.status.as_str()) ", attempt " (run.attempt) ") · "
+                    "Run " a href={ "/runs/" (run.id) } { (run.id) }
+                    " (" (run.status.as_str()) ", attempt " (run.attempt) ") · "
                     a href={ "/runs/" (run.id) "/log" } { "log" } " · "
                     a href={ "/runs/" (run.id) "/transcript" } { "transcript" }
                 }
@@ -23,15 +27,16 @@ pub fn failed(date: &str, run: &RunRow) -> Markup {
     )
 }
 
-pub fn running(date: &str, run: &RunRow) -> Markup {
+pub fn running(date: &str, run: &RunRow, caps: &CapsUsed) -> Markup {
     page(
         &format!("Run in progress · {date}"),
         html! {
             header { h1 { "Daily Brief " span.meta { (date) } } (runs_link()) }
             main.state {
                 p { "Run in progress." }
+                (caps_bar(caps, run.attempt))
                 p.meta {
-                    "Run " (run.id) " started " (run.started_at) " · "
+                    "Run " a href={ "/runs/" (run.id) } { (run.id) } " started " (run.started_at) " · "
                     a href={ "/runs/" (run.id) "/log" } { "log" }
                 }
             }

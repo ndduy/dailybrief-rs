@@ -660,3 +660,123 @@ async fn page_script_has_sri_and_htmx_post_run_gets_hx_refresh() {
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(headers["hx-refresh"], "true");
 }
+
+// ---------- M2 Task 4: /runs/{id} ----------
+
+/// Loads a run with events from a transcript file; `attempt`/`kind`/`status` as given.
+fn run_with_events(db: &Db, id: &str, transcript: &std::path::Path, status: RunStatus) {
+    run_row(db, id, status, None);
+    let text = std::fs::read_to_string(transcript).unwrap();
+    db.with(|c| {
+        for (i, raw) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+            let kind = dailybrief::harness::trajectory::event_type(raw);
+            repo::append_run_event(c, id, i as i64 + 1, &kind, raw)?;
+        }
+        Ok(())
+    })
+    .unwrap();
+}
+
+fn real_fixture() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/transcripts/real-2026-09-21-c8354589.jsonl")
+}
+
+fn between(body: &str, start: &str, end: &str) -> String {
+    let s = body.find(start).unwrap_or_else(|| panic!("no {start}"));
+    let e = body[s..].find(end).map(|i| s + i + end.len()).unwrap();
+    body[s..e].to_string()
+}
+
+#[tokio::test]
+async fn run_page_renders_caps_retry_and_every_turn() {
+    let db = Db::open_in_memory().unwrap();
+    run_with_events(
+        &db,
+        "2026-09-21-c8354589",
+        &real_fixture(),
+        RunStatus::Success,
+    );
+    let (status, _, body) = get(db, "/runs/2026-09-21-c8354589").await;
+    assert_eq!(status, StatusCode::OK);
+    let bar = between(&body, "<div class=\"caps\"", "</div>");
+    assert!(bar.contains("reads 32/45"), "{bar}");
+    assert!(
+        bar.contains("<span class=\"cap hit\">selects 31/30</span>"),
+        "{bar}"
+    );
+    assert!(bar.contains("web 0/5"));
+    assert!(bar.contains("turns 77/120"));
+    assert!(bar.contains("8:20/15:00"), "{bar}");
+    assert!(body.contains("attempt 1 of 2"), "single attempt, no retry");
+    assert!(body.contains("href=\"/runs/2026-09-21-c8354589/log\""));
+    assert!(body.contains("href=\"/runs/2026-09-21-c8354589/transcript\""));
+    let table = between(&body, "<table class=\"turns\">", "</table>");
+    assert_eq!(table.matches("<tr class=\"turn\">").count(), 77);
+    insta::assert_snapshot!("run_page_turns", table);
+}
+
+#[tokio::test]
+async fn run_page_for_a_running_run_reloads_and_unknown_run_is_404() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-live", RunStatus::Running, None);
+    let (status, _, body) = get(db.clone(), "/runs/2026-09-17-live").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("http-equiv=\"refresh\" content=\"15\""));
+    assert!(body.contains("turns 0/120"));
+    let (status, _, _) = get(db, "/runs/nope").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn runs_index_shows_turns_and_wall_and_links_the_run_page() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-done", RunStatus::Success, None);
+    let (_, _, body) = get(db, "/runs").await;
+    assert!(body.contains("href=\"/runs/2026-09-17-done\""), "{body}");
+    assert!(body.contains("<td>12</td>"), "turns column from runs.turns");
+    assert!(body.contains("<td>10:00</td>"), "wall from started/ended");
+}
+
+#[tokio::test]
+async fn failed_state_shows_the_caps_bar_and_run_link() {
+    let db = Db::open_in_memory().unwrap();
+    let fake = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/transcripts/max-turns.jsonl");
+    run_with_events(&db, "2026-09-17-fail", &fake, RunStatus::Failed);
+    let (status, _, body) = get(db, "/d/2026-09-17").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("No digest"));
+    assert!(body.contains("<div class=\"caps\""), "{body}");
+    assert!(body.contains("href=\"/runs/2026-09-17-fail\""));
+}
+
+#[tokio::test]
+async fn run_page_under_64_kib_for_120_turns() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-big", RunStatus::Success, None);
+    db.with(|c| {
+        let mut seq = 0;
+        for i in 1..=120 {
+            seq += 1;
+            let a = format!(
+                r#"{{"type":"assistant","timestamp":"2026-09-16T23:{:02}:{:02}.000Z","message":{{"id":"m{i}","content":[{{"type":"tool_use","id":"t{i}","name":"mcp__dailybrief__read_item","input":{{"id":"item{i:04}"}}}}],"usage":{{"input_tokens":3,"output_tokens":40,"cache_read_input_tokens":90000,"cache_creation_input_tokens":200}}}}}}"#,
+                30 + i / 60,
+                i % 60
+            );
+            repo::append_run_event(c, "2026-09-17-big", seq, "assistant", &a)?;
+            seq += 1;
+            let u = format!(
+                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"t{i}","content":"{}"}}]}}}}"#,
+                "x".repeat(5000)
+            );
+            repo::append_run_event(c, "2026-09-17-big", seq, "user", &u)?;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let (status, _, body) = get(db, "/runs/2026-09-17-big").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<span class=\"cap hit\">turns 120/120</span>"));
+    assert!(body.len() < 64 * 1024, "{} bytes", body.len());
+}
