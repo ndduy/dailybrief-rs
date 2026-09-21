@@ -67,7 +67,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Phase 3: Harness hardening (`harness-hardening`)
 - [x] Task 6: Stderr redaction before storage; `scan-transcript` covers `runs.error`; lossy stdout lines
-- [ ] Task 7: SIGKILL-after-grace and killed-run transcript tests; fourth publish after `fatal` refused
+- [x] Task 7: SIGKILL-after-grace and killed-run transcript tests; fourth publish after `fatal` refused
 
 ### Phase 4: Retention (`retention`)
 - [ ] Task 8: `core::retention` and `dailybrief prune [--days] [--dry-run]` (ADR 0013)

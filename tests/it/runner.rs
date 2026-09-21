@@ -468,3 +468,24 @@ fn run_verb_rejects_max_turns_zero() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("max-turns"), "{err}");
 }
+
+/// Both killed attempts keep what arrived before the kill: the lines in the file and in
+/// run_events, and an ended_at on the row.
+#[tokio::test]
+async fn killed_runs_keep_their_transcript_and_events() {
+    let r = rig(&["no-result.jsonl"], true, true, Duration::from_millis(400));
+    let summary = r.runner.run(RunKind::Scheduled).await.unwrap();
+    assert_eq!(summary.status, "killed");
+    assert_eq!(summary.run_ids.len(), 2);
+    for id in &summary.run_ids {
+        let row = run_row(&r.db, id);
+        assert_eq!(row.status, RunStatus::Killed);
+        assert!(row.ended_at.is_some());
+        let file = std::fs::read_to_string(row.transcript_path.unwrap()).unwrap();
+        assert_eq!(file.lines().count(), 2, "{file}");
+        let events = r.db.with(|c| repo::list_run_events(c, id)).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, "system");
+        assert_eq!(events[1].kind, "assistant");
+    }
+}

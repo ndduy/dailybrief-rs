@@ -10,8 +10,11 @@
 #   DAILYBRIEF_FAKE_HANG=1        after replaying, sleep until SIGTERM (exit 143) or SIGKILL
 #   DAILYBRIEF_FAKE_CLOSE_STDOUT=1  with HANG: close stdout and stderr first (a child that went quiet)
 #   DAILYBRIEF_FAKE_TERM_MARKER   file to create when SIGTERM is received (proves TERM before KILL)
+#   DAILYBRIEF_FAKE_IGNORE_TERM=1 with HANG: ignore SIGTERM (only SIGKILL ends the fake)
+#   DAILYBRIEF_FAKE_PID_FILE      file to write the fake's pid into at start
 #   DAILYBRIEF_FAKE_EXIT          exit code when not hanging (default 0)
 set -u
+if [ -n "${DAILYBRIEF_FAKE_PID_FILE:-}" ]; then echo $$ > "$DAILYBRIEF_FAKE_PID_FILE"; fi
 if [ -n "${DAILYBRIEF_FAKE_STDERR_BYTES:-}" ]; then
   head -c "$DAILYBRIEF_FAKE_STDERR_BYTES" /dev/zero | tr '\0' 'e' >&2
 fi
@@ -33,7 +36,11 @@ elif [ -n "${DAILYBRIEF_FAKE_TRANSCRIPT:-}" ]; then
 fi
 if [ "${DAILYBRIEF_FAKE_HANG:-}" = "1" ]; then
   if [ "${DAILYBRIEF_FAKE_CLOSE_STDOUT:-}" = "1" ]; then exec 1>&- 2>&-; fi
-  trap 'echo term > "${DAILYBRIEF_FAKE_TERM_MARKER:-/dev/null}"; exit 143' TERM
+  if [ "${DAILYBRIEF_FAKE_IGNORE_TERM:-}" = "1" ]; then
+    trap '' TERM
+  else
+    trap 'echo term > "${DAILYBRIEF_FAKE_TERM_MARKER:-/dev/null}"; exit 143' TERM
+  fi
   while :; do sleep 0.05; done
 fi
 exit "${DAILYBRIEF_FAKE_EXIT:-0}"

@@ -351,3 +351,73 @@ async fn full_trajectory_through_mcp() {
             .starts_with("This run already published digest")
     );
 }
+
+/// Stages 24 + 6 items from the exploit list, the way the Editor does.
+async fn stage_thirty(rig: &Rig) {
+    let exploit = rig
+        .structured(
+            "list_candidates",
+            json!({ "strategy": "exploit", "limit": 80 }),
+        )
+        .await;
+    let cands = exploit["candidates"].as_array().unwrap().clone();
+    let mut staged = 0;
+    let mut per_source = std::collections::HashMap::<String, usize>::new();
+    for cand in &cands {
+        if staged == 30 {
+            break;
+        }
+        let id = cand["id"].as_str().unwrap();
+        rig.structured("read_item", json!({ "id": id })).await;
+        let count = per_source
+            .entry(cand["source"].as_str().unwrap().to_string())
+            .or_default();
+        if *count >= 4 {
+            continue;
+        }
+        let (section, reason) = if staged < 24 {
+            ("for_you", None)
+        } else {
+            ("beyond_radar", Some("emerging"))
+        };
+        let out = rig
+            .structured(
+                "select",
+                select_args(id, section, &format!("Topic {}", staged % 4), reason),
+            )
+            .await;
+        assert_eq!(out["ok"], true);
+        *count += 1;
+        staged += 1;
+    }
+    assert_eq!(staged, 30);
+}
+
+/// `spec/m2.md` §11 #7: after the third rejection the run is fatal; even a now-valid fourth
+/// publish is refused and writes nothing.
+#[tokio::test]
+async fn publish_after_fatal_is_refused() {
+    let rig = Rig::start(seeded()).await;
+    for _ in 1..=3 {
+        let r = rig.call("publish_digest", json!({})).await;
+        assert_eq!(r.is_error, Some(true));
+    }
+    stage_thirty(&rig).await;
+    let fourth = rig.call("publish_digest", json!({})).await;
+    assert_eq!(fourth.is_error, Some(true), "{fourth:?}");
+    let body = fourth.structured_content.unwrap();
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["fatal"], true);
+    assert!(
+        body["violations"][0]
+            .as_str()
+            .unwrap()
+            .contains("rejected 3 times"),
+        "{body}"
+    );
+    let digests: i64 = rig
+        .db
+        .with(|c| Ok(c.query_row("SELECT count(*) FROM digests", [], |r| r.get(0))?))
+        .unwrap();
+    assert_eq!(digests, 0, "nothing was written");
+}

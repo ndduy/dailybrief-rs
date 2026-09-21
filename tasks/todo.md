@@ -131,13 +131,13 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** Fake knob `DAILYBRIEF_FAKE_IGNORE_TERM=1` (`trap '' TERM`); prove SIGKILL after `kill_grace` and that the pid is gone. Extend the killed-runs runner test to assert each killed attempt has its `run_events` rows, a transcript file with the lines before the kill, and `ended_at`. In `mcp::server`, after `publish_rejections == 3` every further `publish_digest` returns the same violation text plus `fatal: true` without touching the database (spec §11 #7).
 
 **Acceptance criteria:**
-- [ ] test: `run_hang_ignoring_sigterm_is_sigkilled_after_grace` (wall 300 ms, grace 500 ms; `Killed`; elapsed ≥ grace; `kill -0 <pid>` fails).
-- [ ] test: `killed_runs_keep_their_transcript_and_events`.
-- [ ] test: `publish_after_fatal_is_refused` (three empty publishes, then a valid 24 + 6 publish → refused, no `digests` row).
+- [x] test: `run_hang_ignoring_sigterm_is_sigkilled_after_grace` (fake `trap '' TERM` + pid file; `Killed`; elapsed ≥ wall + grace; `kill -0` fails).
+- [x] test: `killed_runs_keep_their_transcript_and_events` (both attempts: 2 file lines, 2 events system/assistant, `ended_at` set).
+- [x] test: `publish_after_fatal_is_refused` (three empty publishes, then a valid 24 + 6 publish → refused with `fatal: true`, no `digests` row).
 
 **Verification:**
-- [ ] `bin/dc cargo test harness runner mcp`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test harness runner mcp`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 6
 **Files likely touched:** `tests/fake-claude/claude`, `tests/it/harness.rs`, `tests/it/runner.rs`, `src/mcp/tools/publish_digest.rs`, `tests/it/mcp.rs`

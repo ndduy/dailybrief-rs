@@ -30,6 +30,14 @@ fn request(cwd: &Path) -> HarnessRequest {
 
 /// An adapter pointed at the fake, with the given DAILYBRIEF_FAKE_* knobs and a short wall clock.
 fn adapter(knobs: &[(&str, &str)], wall_clock: Duration) -> HarnessKind {
+    adapter_with_grace(knobs, wall_clock, Duration::from_secs(2))
+}
+
+fn adapter_with_grace(
+    knobs: &[(&str, &str)],
+    wall_clock: Duration,
+    grace: Duration,
+) -> HarnessKind {
     let settings = load_config(&Env::from_lookup(|_| None).unwrap())
         .unwrap()
         .harness
@@ -45,7 +53,7 @@ fn adapter(knobs: &[(&str, &str)], wall_clock: Duration) -> HarnessKind {
     let mut a = ClaudeCodeAdapter::new(settings, &parent).unwrap();
     a.binary = root().join("tests/fake-claude/claude");
     a.wall_clock = wall_clock;
-    a.kill_grace = Duration::from_secs(2);
+    a.kill_grace = grace;
     HarnessKind::ClaudeCode(a)
 }
 
@@ -442,4 +450,52 @@ async fn scan_transcript_checks_runs_error() {
     assert_eq!(code, 1, "{text}");
     assert!(text.contains("runs.error"), "{text}");
     assert!(text.contains("sk-ant-"), "{text}");
+}
+
+/// A child that ignores SIGTERM is SIGKILLed once the grace period passes, and is gone.
+#[tokio::test]
+async fn run_hang_ignoring_sigterm_is_sigkilled_after_grace() {
+    let t = fixture("no-result.jsonl");
+    let dir = tempfile::tempdir().unwrap();
+    let pid_file = dir.path().join("pid");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, String)>(1024);
+    let collector = tokio::spawn(async move {
+        let mut n = 0;
+        while rx.recv().await.is_some() {
+            n += 1;
+        }
+        n
+    });
+    let started = std::time::Instant::now();
+    let outcome = adapter_with_grace(
+        &[
+            ("DAILYBRIEF_FAKE_TRANSCRIPT", t.to_str().unwrap()),
+            ("DAILYBRIEF_FAKE_HANG", "1"),
+            ("DAILYBRIEF_FAKE_IGNORE_TERM", "1"),
+            ("DAILYBRIEF_FAKE_PID_FILE", pid_file.to_str().unwrap()),
+        ],
+        Duration::from_millis(300),
+        Duration::from_millis(500),
+    )
+    .run(&request(dir.path()), tx)
+    .await;
+    let elapsed = started.elapsed();
+    assert!(matches!(outcome, RunOutcome::Killed { .. }), "{outcome:?}");
+    assert!(
+        elapsed >= Duration::from_millis(800),
+        "wall + grace: {elapsed:?}"
+    );
+    assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+    assert_eq!(collector.await.unwrap(), 2);
+    let pid: i32 = std::fs::read_to_string(&pid_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    let alive = std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .unwrap()
+        .success();
+    assert!(!alive, "pid {pid} still alive after SIGKILL");
 }
