@@ -6,5 +6,6 @@ pub mod runner;
 pub mod scan_transcript;
 pub mod scheduler;
 pub mod service_runner;
+pub mod trajectory;
 pub mod types;
 pub mod verify;

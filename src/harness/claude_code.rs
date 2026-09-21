@@ -170,41 +170,35 @@ pub enum StreamEvent {
     Unparseable(String),
 }
 
-/// Classifies one stdout line. A `system` event that is not `init` is `Other`.
+/// Classifies one stdout line for the runner: `init` and `result` are typed, everything else
+/// is `Other` with its raw value. A thin view over [`super::trajectory::Event`] (ADR 0012).
 pub fn parse_stream_line(raw: &str) -> StreamEvent {
+    use super::trajectory::Event;
     let Ok(value) = serde_json::from_str::<Value>(raw) else {
         return StreamEvent::Unparseable(raw.to_string());
     };
-    let Some(kind) = value
-        .get("type")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-    else {
-        return StreamEvent::Unparseable(raw.to_string());
-    };
-    match kind.as_str() {
-        "system" if value.get("subtype").and_then(Value::as_str) == Some("init") => {
-            match serde_json::from_value::<InitEvent>(value.clone()) {
-                Ok(init) => StreamEvent::Init(init),
-                Err(_) => StreamEvent::Other { kind, raw: value },
-            }
-        }
-        "result" => match serde_json::from_value::<ResultEvent>(value.clone()) {
-            Ok(result) => StreamEvent::Result(result),
-            Err(_) => StreamEvent::Other { kind, raw: value },
+    match Event::from_value(value.clone()) {
+        Event::System(s) => match s.init() {
+            Some(init) => StreamEvent::Init(init),
+            None => StreamEvent::Other {
+                kind: "system".to_string(),
+                raw: value,
+            },
         },
-        _ => StreamEvent::Other { kind, raw: value },
+        Event::Result(result) => StreamEvent::Result(result),
+        Event::Unknown { kind, .. } if kind == "unparseable" => {
+            StreamEvent::Unparseable(raw.to_string())
+        }
+        other => StreamEvent::Other {
+            kind: other.kind().to_string(),
+            raw: value,
+        },
     }
 }
 
 /// The `run_events.type` value for a raw line: its `type` field, or `unparseable`.
 pub fn event_type(raw: &str) -> String {
-    match parse_stream_line(raw) {
-        StreamEvent::Init(_) => "system".to_string(),
-        StreamEvent::Result(_) => "result".to_string(),
-        StreamEvent::Other { kind, .. } => kind,
-        StreamEvent::Unparseable(_) => "unparseable".to_string(),
-    }
+    super::trajectory::event_type(raw)
 }
 
 /// How one `claude -p` process is spawned (Task 19 adds `run`).

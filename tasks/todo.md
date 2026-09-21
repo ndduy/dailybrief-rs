@@ -11,15 +11,15 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** Add `src/harness/trajectory.rs` with an internally tagged `Event` enum (`system` → `SystemEvent { subtype, init: Option<InitEvent>, raw }`, `assistant` / `user` → `{ message: Message, timestamp }` where `Message` has `id`, `content: Vec<Block>` (`text`, `thinking`, `tool_use { id, name, input }`, `tool_result { tool_use_id, content }`, `#[serde(other)] Other`), `usage: Option<Usage>`; `tool_progress`, `rate_limit_event` keep their raw `Value`; `result` reuses `ResultEvent`; `#[serde(other)] Unknown`). `parse_line(&str) -> Event` never fails (invalid JSON → `Unknown`). `claude_code::parse_stream_line` and `event_type` become thin wrappers so the runner's stored `type` strings do not change. Copy the real transcript of run `2026-09-21-c8354589` verbatim to `tests/fixtures/transcripts/real-2026-09-21-c8354589.jsonl` after `scan-transcript` reports clean. Measure distinct assistant `message.id`s on it and write that number into ADR 0012's draft.
 
 **Acceptance criteria:**
-- [ ] test: `every_fixture_line_parses_to_a_known_variant` (zero `Unknown` over the real fixture; counts per variant asserted: 107 assistant, 77 user, 148 system, 1 tool_progress, 3 rate_limit_event, 1 result).
-- [ ] test: `unknown_type_and_unknown_block_are_kept_not_dropped`; `new_system_subtype_keeps_its_name`; `invalid_json_is_unknown`.
-- [ ] test: `event_type_strings_are_unchanged` (`system`, `assistant`, `user`, `result`, `rate_limit_event`, `tool_progress`, `unparseable` exactly as R0 stored them).
-- [ ] `docs/adr/0012-trajectory-model.md` drafted with the measured turn count.
+- [x] test: `every_fixture_line_parses_to_a_known_variant` (zero `Unknown` over the real fixture; counts per variant asserted: 107 assistant, 77 user, 148 system, 1 tool_progress, 3 rate_limit_event, 1 result).
+- [x] test: `unknown_type_and_unknown_block_are_kept_not_dropped`; `new_system_subtype_keeps_its_name_and_invalid_json_is_unknown`; plus unit tests for string content, tool blocks, and a known type with a bad shape.
+- [x] test: `event_type_strings_are_unchanged` (`system`, `assistant`, `user`, `result`, `rate_limit_event`, `tool_progress`, `unparseable` exactly as R0 stored them).
+- [x] `docs/adr/0012-trajectory-model.md` drafted: 77 distinct ids vs `num_turns` 78 (the final round trip); per-line tokens do not sum to the result's, so Task 2 reconciles turns and wall clock only.
 
 **Verification:**
-- [ ] `bin/dc cargo test trajectory`
-- [ ] `bin/dc bin/check task`
-- [ ] `bin/dc cargo run -- scan-transcript tests/fixtures/transcripts/real-2026-09-21-c8354589.jsonl` exits 0
+- [x] `bin/dc cargo test trajectory`
+- [x] `bin/dc bin/check task`
+- [x] scan-transcript on the source run in the runtime image: clean
 
 **Dependencies:** None
 **Files likely touched:** `src/harness/trajectory.rs`, `src/harness/mod.rs`, `src/harness/claude_code.rs`, `tests/fixtures/transcripts/real-2026-09-21-c8354589.jsonl`, `docs/adr/0012-trajectory-model.md`

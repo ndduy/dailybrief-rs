@@ -8,4 +8,5 @@ mod mcp;
 mod mcp_stdout;
 mod runner;
 mod scenario;
+mod trajectory;
 mod web;
