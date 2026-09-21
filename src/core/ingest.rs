@@ -254,7 +254,12 @@ impl Ingester {
             else {
                 continue;
             };
-            let Some(article) = extract(&html, Some(&entry.link)) else {
+            // dom_smoothie is CPU-bound on up to 2 MiB of HTML: off the async runtime
+            // (CONSTRAINTS.md), and a panic inside the parser only skips this entry.
+            let link = entry.link.clone();
+            let Ok(Some(article)) =
+                tokio::task::spawn_blocking(move || extract(&html, Some(&link))).await
+            else {
                 continue;
             };
             // The feed's title wins: entries without one were dropped by the parser.

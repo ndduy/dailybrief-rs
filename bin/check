@@ -12,6 +12,11 @@ started=$(date +%s)
 step() { printf '\n== %s ==\n' "$1"; }
 
 fast() {
+  step "secrets file mode"
+  # .env carries the subscription token; it must be readable by its owner only (ship review).
+  if [ -f .env ] && [ "$(stat -c %a .env)" != "600" ]; then
+    echo ".env is mode $(stat -c %a .env); run: chmod 600 .env"; exit 1
+  fi
   step "build --all-targets (-D warnings)"
   RUSTFLAGS="-D warnings" cargo build --all-targets
   step "clippy -D warnings"
