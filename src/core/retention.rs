@@ -35,6 +35,14 @@ pub struct PruneItem {
     pub events: i64,
 }
 
+/// A run whose directory could not be removed; its rows are kept and it is retried next time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PruneFailure {
+    pub run_id: String,
+    pub error: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PruneReport {
@@ -45,6 +53,13 @@ pub struct PruneReport {
     pub dirs_removed: usize,
     pub events_deleted: usize,
     pub items: Vec<PruneItem>,
+    pub failed: Vec<PruneFailure>,
+}
+
+/// Run ids are minted by the runner (`YYYY-MM-DD-<8 hex>`); anything that could leave the
+/// runs directory is refused here as a second line of defence.
+fn id_is_a_plain_name(id: &str) -> bool {
+    !id.is_empty() && !id.contains('/') && !id.contains('\\') && !id.starts_with('.')
 }
 
 /// The RFC 3339 instant before which runs fall out of the window.
@@ -65,8 +80,13 @@ pub async fn plan(
     let items = db
         .call(move |conn| {
             let mut items = Vec::new();
+            let runs_root = data_dir.join("runs");
             for run in repo::list_runs_started_before(conn, &before)? {
                 let dir = run_dir(&data_dir, &run.id);
+                if !id_is_a_plain_name(&run.id) || !dir.starts_with(&runs_root) {
+                    tracing::warn!(run_id = %run.id, "prune: run id is not a plain directory name; skipped");
+                    continue;
+                }
                 items.push(PruneItem {
                     dir_exists: dir.is_dir(),
                     dir,
@@ -82,8 +102,9 @@ pub async fn plan(
 }
 
 /// Removes what `plan` listed: the run directory first (transcript, `mcp.json`), then the
-/// `run_events` rows. A directory that cannot be removed keeps its rows and stops the prune
-/// with the error; a directory that is already gone is fine.
+/// `run_events` rows. A directory that cannot be removed keeps its rows, is reported under
+/// `failed`, and does not stop the other runs from being pruned; a directory that is already
+/// gone is fine.
 pub async fn prune(
     db: &Db,
     data_dir: &Path,
@@ -100,6 +121,7 @@ pub async fn prune(
         dirs_removed: 0,
         events_deleted: 0,
         items: items.clone(),
+        failed: Vec::new(),
     };
     if dry_run {
         return Ok(report);
@@ -115,7 +137,18 @@ pub async fn prune(
         .map_err(|e| RetentionError::Remove {
             path: item.dir.clone(),
             source: std::io::Error::other(e),
-        })??;
+        });
+        let removed = match removed {
+            Ok(Ok(removed)) => removed,
+            Ok(Err(e)) | Err(e) => {
+                tracing::warn!(run_id = %item.run_id, error = %e, "prune: directory kept, rows kept");
+                report.failed.push(PruneFailure {
+                    run_id: item.run_id.clone(),
+                    error: e.to_string(),
+                });
+                continue;
+            }
+        };
         if removed {
             report.dirs_removed += 1;
         }
@@ -279,5 +312,52 @@ mod tests {
     #[test]
     fn cutoff_is_days_before_now() {
         assert_eq!(cutoff(now(), 60), "2026-07-23T00:00:00.000Z");
+    }
+
+    /// One directory that cannot be removed keeps its rows and is reported; the others are
+    /// still pruned, so a single stuck run cannot stop retention for good.
+    #[tokio::test]
+    async fn prune_keeps_rows_when_a_directory_cannot_be_removed() {
+        let (tmp, db) = rig();
+        seed(&db, tmp.path(), "r-400", 400, RunStatus::Success, false);
+        // A plain file where the run directory should be: remove_dir_all fails.
+        std::fs::create_dir_all(tmp.path().join("runs")).unwrap();
+        std::fs::write(run_dir(tmp.path(), "r-400"), "not a directory").unwrap();
+        seed(&db, tmp.path(), "r-061", 61, RunStatus::Success, true);
+        let report = prune(&db, tmp.path(), now(), 60, false).await.unwrap();
+        assert_eq!(report.runs, 2);
+        assert_eq!(report.failed.len(), 1);
+        assert_eq!(report.failed[0].run_id, "r-400");
+        assert_eq!((report.dirs_removed, report.events_deleted), (1, 2));
+        assert!(!run_dir(tmp.path(), "r-061").exists());
+        assert!(run_dir(tmp.path(), "r-400").is_file(), "left in place");
+        let (runs, per) = counts(&db);
+        assert_eq!(runs, 2);
+        assert_eq!(
+            per,
+            vec![("r-400".to_string(), 2)],
+            "the stuck run keeps its rows"
+        );
+    }
+
+    #[test]
+    fn run_ids_that_could_leave_the_runs_directory_are_refused() {
+        for bad in ["", ".", "..", "../x", "a/b", "/data", ".hidden", "x\\y"] {
+            assert!(!id_is_a_plain_name(bad), "{bad:?}");
+        }
+        assert!(id_is_a_plain_name("2026-09-22-7494d2ef"));
+        assert!(id_is_a_plain_name("r-061"));
+    }
+
+    #[tokio::test]
+    async fn plan_skips_run_ids_that_escape_the_runs_directory() {
+        let (tmp, db) = rig();
+        seed(&db, tmp.path(), "../escape", 400, RunStatus::Success, false);
+        seed(&db, tmp.path(), "r-400", 400, RunStatus::Success, false);
+        let items = plan(&db, tmp.path(), now(), 60).await.unwrap();
+        assert_eq!(
+            items.iter().map(|i| i.run_id.as_str()).collect::<Vec<_>>(),
+            ["r-400"]
+        );
     }
 }

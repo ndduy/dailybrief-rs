@@ -499,3 +499,73 @@ async fn run_hang_ignoring_sigterm_is_sigkilled_after_grace() {
         .success();
     assert!(!alive, "pid {pid} still alive after SIGKILL");
 }
+
+/// A token in a stdout line or in the result's error text is redacted before storage, not only
+/// on stderr: the delivered lines and the outcome message both read `[redacted]`.
+#[tokio::test]
+async fn stdout_lines_and_result_message_are_redacted() {
+    let dir = tempfile::tempdir().unwrap();
+    let planted = dir.path().join("planted.jsonl");
+    let mut text = std::fs::read_to_string(fixture("max-turns.jsonl")).unwrap();
+    text = text.replace(
+        "Reached maximum number of turns (120)",
+        "auth header was Bearer fake-token then sk-ant-oat01-ZZZ9 rejected",
+    );
+    text.insert_str(
+        0,
+        "{\"type\":\"user\",\"message\":{\"content\":\"echo fake-token and sk-ant-oat01-ABC\"}}\n",
+    );
+    std::fs::write(&planted, &text).unwrap();
+    let (outcome, lines) = run_with(
+        &[("DAILYBRIEF_FAKE_TRANSCRIPT", planted.to_str().unwrap())],
+        Duration::from_secs(10),
+    )
+    .await;
+    let RunOutcome::Failed {
+        message, reason, ..
+    } = outcome
+    else {
+        panic!("{outcome:?}")
+    };
+    assert_eq!(reason, FailReason::MaxTurns);
+    assert!(
+        !message.contains("fake-token") && !message.contains("sk-ant-oat01"),
+        "{message}"
+    );
+    assert!(message.contains("[redacted]"), "{message}");
+    let joined: String = lines
+        .iter()
+        .map(|(_, l)| l.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!joined.contains("fake-token") && !joined.contains("sk-ant-oat01"));
+    assert!(
+        lines[0].1.contains("echo [redacted] and [redacted]"),
+        "{}",
+        lines[0].1
+    );
+}
+
+/// If nobody is storing the lines (the writer died), a harness "success" is still a failed run.
+#[tokio::test]
+async fn dead_sink_makes_the_run_fail() {
+    let t = fixture("success.jsonl");
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, rx) = tokio::sync::mpsc::channel::<(u64, String)>(8);
+    drop(rx);
+    let outcome = adapter(
+        &[("DAILYBRIEF_FAKE_TRANSCRIPT", t.to_str().unwrap())],
+        Duration::from_secs(10),
+    )
+    .run(&request(dir.path()), tx)
+    .await;
+    match outcome {
+        RunOutcome::Failed {
+            reason, message, ..
+        } => {
+            assert_eq!(reason, FailReason::Exit);
+            assert!(message.contains("transcript writer stopped"), "{message}");
+        }
+        other => panic!("expected failed, got {other:?}"),
+    }
+}

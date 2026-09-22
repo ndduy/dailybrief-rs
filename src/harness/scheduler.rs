@@ -88,8 +88,10 @@ impl Scheduler {
 
 /// Two schedules in one loop (the morning run and the daily prune, ADR 0013): whichever is
 /// due first runs, and the other waits for it to finish, so the prune can never overlap a
-/// run. A failing job is logged and the loop goes on. Ends when `stop` resolves.
-#[allow(clippy::too_many_arguments)]
+/// run. An occurrence of the other schedule that passed while a job ran fires right after it
+/// (a morning that overruns 07:00 still gets its prune). A failing job is logged and the loop
+/// goes on. Ends when `stop` resolves.
+#[allow(clippy::too_many_arguments)] // two schedules, two jobs, clock, sleep and stop are the whole interface
 pub async fn run_two_loops<C, S, SF, J1, JF1, T1, E1, J2, JF2, T2, E2>(
     first: &Scheduler,
     second: &Scheduler,
@@ -129,20 +131,23 @@ where
             () = sleep(wait) => {}
         }
         if first_due {
-            match job1().await {
-                Ok(_) => tracing::info!(cron = %expr, "scheduled job finished"),
-                Err(e) => {
-                    tracing::warn!(cron = %expr, error = %e, "scheduled job skipped or failed")
-                }
+            log_job(&first.expr, job1().await);
+            if n2 <= clock() {
+                log_job(&second.expr, job2().await);
             }
         } else {
-            match job2().await {
-                Ok(_) => tracing::info!(cron = %expr, "scheduled job finished"),
-                Err(e) => {
-                    tracing::warn!(cron = %expr, error = %e, "scheduled job skipped or failed")
-                }
+            log_job(&second.expr, job2().await);
+            if n1 <= clock() {
+                log_job(&first.expr, job1().await);
             }
         }
+    }
+}
+
+fn log_job<T, E: std::fmt::Display>(expr: &str, result: Result<T, E>) {
+    match result {
+        Ok(_) => tracing::info!(cron = %expr, "scheduled job finished"),
+        Err(e) => tracing::warn!(cron = %expr, error = %e, "scheduled job skipped or failed"),
     }
 }
 
@@ -249,6 +254,14 @@ mod tests {
     type Log = Rc<RefCell<Vec<(&'static str, DateTime<Utc>)>>>;
 
     async fn two_loops_log(prune_fails_first: bool) -> Vec<(&'static str, DateTime<Utc>)> {
+        two_loops_log_with(prune_fails_first, 0).await
+    }
+
+    /// `overrun_minutes` is how long the run job takes on the injected clock.
+    async fn two_loops_log_with(
+        prune_fails_first: bool,
+        overrun_minutes: i64,
+    ) -> Vec<(&'static str, DateTime<Utc>)> {
         let run = Scheduler::new("30 6 * * *", chrono_tz::UTC).unwrap();
         let prune = Scheduler::new("0 7 * * *", chrono_tz::UTC).unwrap();
         let clock = Rc::new(Cell::new(
@@ -278,6 +291,7 @@ mod tests {
                     },
                     move || {
                         l1.borrow_mut().push(("run", c3.get()));
+                        c3.set(c3.get() + chrono::Duration::minutes(overrun_minutes));
                         async { Ok::<(), String>(()) }
                     },
                     move || {
@@ -330,6 +344,23 @@ mod tests {
             log.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
             ["run", "prune", "run", "prune"],
             "the failing first prune stopped neither schedule"
+        );
+    }
+
+    /// A morning run that ends at 07:10 (two attempts) does not lose that day's prune: the
+    /// passed 07:00 occurrence fires right after the run.
+    #[tokio::test]
+    async fn prune_fires_after_a_run_that_overran_it() {
+        let log = two_loops_log_with(false, 40).await;
+        let expect = |d: u32, h: u32, m: u32| Utc.with_ymd_and_hms(2026, 9, d, h, m, 0).unwrap();
+        assert_eq!(
+            log,
+            vec![
+                ("run", expect(17, 6, 30)),
+                ("prune", expect(17, 7, 10)),
+                ("run", expect(18, 6, 30)),
+                ("prune", expect(18, 7, 10)),
+            ]
         );
     }
 }

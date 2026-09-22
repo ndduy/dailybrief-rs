@@ -60,6 +60,7 @@ mod tests {
                 total_cost_usd: None,
                 usage: None,
                 structured_output: structured,
+                errors: Vec::new(),
             },
             init: None,
         }
@@ -168,6 +169,7 @@ mod tests {
                 total_cost_usd: None,
                 usage: None,
                 structured_output: Some(serde_json::json!({ "not": "a digest" })),
+                errors: Vec::new(),
             },
             init: None,
         };

@@ -146,13 +146,18 @@ pub struct ResultEvent {
     pub usage: Option<Value>,
     #[serde(default)]
     pub structured_output: Option<Value>,
+    /// Claude Code 2.1.274 reports error text here (`error_max_turns` carries
+    /// `errors: ["Reached maximum number of turns (5)"]` and no `result` string).
+    #[serde(default)]
+    pub errors: Vec<String>,
 }
 
 impl ResultEvent {
-    /// The `result` field as text when it is a string (error messages), else the subtype.
+    /// The `result` field as text when it is a string, else the `errors` joined, else the subtype.
     pub fn message(&self) -> String {
         match &self.result {
-            Some(Value::String(s)) => s.clone(),
+            Some(Value::String(s)) if !s.trim().is_empty() => s.clone(),
+            _ if !self.errors.is_empty() => self.errors.join("; "),
             _ => self.subtype.clone(),
         }
     }
@@ -290,6 +295,7 @@ impl ClaudeCodeAdapter {
         let mut result: Option<ResultEvent> = None;
         let mut seq: u64 = 0;
         let mut sink_closed = false;
+        let secrets = self.secrets();
         let read_stdout = async {
             // Bytes, not `lines()`: one invalid UTF-8 byte must not end the read loop (and with
             // it the run); the line is stored lossily instead.
@@ -305,9 +311,12 @@ impl ClaudeCodeAdapter {
                         break;
                     }
                 }
-                let raw = String::from_utf8_lossy(&buf)
-                    .trim_end_matches(['\n', '\r'])
-                    .to_string();
+                // Redacted before it is stored or parsed: the transcript, run_events and every
+                // page see the same text, and none of them can carry the token.
+                let raw = redact(
+                    String::from_utf8_lossy(&buf).trim_end_matches(['\n', '\r']),
+                    &secrets,
+                );
                 if raw.trim().is_empty() {
                     continue;
                 }
@@ -347,10 +356,19 @@ impl ClaudeCodeAdapter {
             };
         };
         let exit_code = status.and_then(|s| s.code());
-        let stderr_tail = redact(
-            &drain(&mut stderr_task, self.kill_grace).await,
-            &self.secrets(),
-        );
+        let stderr_tail = redact(&drain(&mut stderr_task, self.kill_grace).await, &secrets);
+        if sink_closed {
+            // The transcript is the source of truth (`SPEC.md` §3); a run whose lines were not
+            // all stored cannot be called a success, whatever the harness reported.
+            return RunOutcome::Failed {
+                reason: FailReason::Exit,
+                message: "transcript writer stopped before the run ended; lines were not stored"
+                    .into(),
+                exit_code,
+                result,
+                init,
+            };
+        }
         match result {
             Some(r) if r.subtype == "success" && !r.is_error => {
                 RunOutcome::Success { result: r, init }
@@ -363,7 +381,7 @@ impl ClaudeCodeAdapter {
                 };
                 RunOutcome::Failed {
                     reason,
-                    message: r.message(),
+                    message: redact(&r.message(), &secrets),
                     exit_code,
                     result: Some(r),
                     init,
@@ -503,6 +521,26 @@ mod tests {
             m.insert((*k).to_string(), (*v).to_string());
         }
         m
+    }
+
+    #[test]
+    fn result_errors_array_becomes_the_message() {
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/transcripts/max-turns-5.jsonl"
+        ))
+        .unwrap();
+        let r = text
+            .lines()
+            .find_map(|l| match parse_stream_line(l) {
+                StreamEvent::Result(r) => Some(r),
+                _ => None,
+            })
+            .expect("the fixture has a result line");
+        assert_eq!(r.subtype, "error_max_turns");
+        assert_eq!(r.message(), "Reached maximum number of turns (5)");
+        let plain: ResultEvent = serde_json::from_str(r#"{"subtype":"error_x"}"#).unwrap();
+        assert_eq!(plain.message(), "error_x");
     }
 
     #[test]

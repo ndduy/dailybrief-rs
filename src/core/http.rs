@@ -142,6 +142,21 @@ struct GuardedResolver {
     allow_loopback: bool,
 }
 
+/// The resolver's filter: every address must be allowed, or the whole answer is refused (a
+/// mixed public/private answer is what a rebinding attempt looks like).
+pub fn guard_addrs(
+    addrs: Vec<SocketAddr>,
+    allow_loopback: bool,
+) -> std::io::Result<Vec<SocketAddr>> {
+    if addrs
+        .iter()
+        .any(|a| !address_allowed(a.ip(), allow_loopback))
+    {
+        return Err(std::io::Error::other(PRIVATE_MSG));
+    }
+    Ok(addrs)
+}
+
 impl Resolve for GuardedResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let allow = self.allow_loopback;
@@ -149,9 +164,7 @@ impl Resolve for GuardedResolver {
         Box::pin(async move {
             let addrs: Vec<SocketAddr> =
                 tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
-            if addrs.iter().any(|a| !address_allowed(a.ip(), allow)) {
-                return Err(std::io::Error::other(PRIVATE_MSG).into());
-            }
+            let addrs = guard_addrs(addrs, allow)?;
             Ok(Box::new(addrs.into_iter()) as Addrs)
         })
     }
@@ -180,6 +193,8 @@ pub fn client(ingest: &Ingest) -> Result<Http, HttpError> {
         .user_agent(USER_AGENT)
         .timeout(Duration::from_millis(ingest.request_timeout_ms))
         .connect_timeout(Duration::from_millis(ingest.request_timeout_ms.min(10_000)))
+        // No proxy from the environment: a proxy would bypass the guarded resolver.
+        .no_proxy()
         .dns_resolver(GuardedResolver { allow_loopback })
         .redirect(reqwest::redirect::Policy::custom(move |attempt| {
             if attempt.previous().len() > max {
@@ -280,6 +295,34 @@ mod tests {
         assert!(address_allowed("127.0.0.1".parse().unwrap(), true));
         assert!(address_allowed("::1".parse().unwrap(), true));
         assert!(!address_allowed("10.0.0.1".parse().unwrap(), true));
+    }
+
+    /// The only guard for DNS names: the resolver's filter, tested without DNS.
+    #[test]
+    fn resolver_refuses_names_that_resolve_to_private_space() {
+        let sa = |s: &str| -> SocketAddr { format!("{s}:0").parse().unwrap() };
+        let sa6 = |s: &str| -> SocketAddr { format!("[{s}]:0").parse().unwrap() };
+        assert!(guard_addrs(vec![sa("1.1.1.1")], false).is_ok());
+        assert!(guard_addrs(vec![sa("10.0.0.1")], false).is_err());
+        assert!(
+            guard_addrs(vec![sa("172.17.0.2")], false).is_err(),
+            "docker bridge"
+        );
+        assert!(
+            guard_addrs(vec![sa("1.1.1.1"), sa("10.0.0.1")], false).is_err(),
+            "a mixed answer is refused as a whole"
+        );
+        assert!(guard_addrs(vec![sa6("::ffff:127.0.0.1")], false).is_err());
+        assert!(guard_addrs(vec![sa("127.0.0.1")], false).is_err());
+        assert!(
+            guard_addrs(vec![sa("127.0.0.1")], true).is_ok(),
+            "tests may allow loopback"
+        );
+        assert!(
+            guard_addrs(vec![sa("10.0.0.1")], true).is_err(),
+            "but never other private space"
+        );
+        assert!(guard_addrs(Vec::new(), false).unwrap().is_empty());
     }
 
     #[test]
