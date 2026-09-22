@@ -32,7 +32,8 @@ async fn render_day(state: &AppState, date: &str) -> Response {
         .call(move |conn| {
             if let Some(digest) = repo::latest_digest_for_date(conn, &d)? {
                 let cards = repo::list_digest_cards(conn, &digest.id)?;
-                return Ok((Some((digest, cards)), None));
+                let ratings = repo::list_ratings_for_digest(conn, &digest.id)?;
+                return Ok((Some((digest, cards, ratings)), None));
             }
             let run = repo::latest_run_between(conn, &from, &to)?;
             let events = match &run {
@@ -44,7 +45,9 @@ async fn render_day(state: &AppState, date: &str) -> Response {
         .await;
     match loaded {
         Err(e) => internal(e),
-        Ok((Some((digest, cards)), _)) => views::digest::render(&digest, &cards).into_response(),
+        Ok((Some((digest, cards, ratings)), _)) => {
+            views::digest::render(&digest, &cards, &ratings).into_response()
+        }
         Ok((None, Some((run, events)))) => {
             let caps = super::runs::caps_of(&state.config, &events);
             match run.status {

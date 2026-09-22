@@ -52,13 +52,13 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** Each card gets 👍 and 👎 buttons (`hx-get="/rate/reasons?item=…&digest=…&sign=up"`, `hx-target` the card's rating slot); the partial lists the four reasons as buttons (`hx-post="/rate"` with hidden fields, `hx-swap="outerHTML"` of the slot); a rated card shows the choice and an "undo" (`hx-post="/rate"` with `sign=none`). Non-htmx fallback: plain forms. `POST /rate` checks same-origin like `/run`, validates item and digest ids exist, stores, replaces or deletes. The digest page cap in the test moves to 24 KiB (spec §11 #5).
 
 **Acceptance criteria:**
-- [ ] test: `rate_stores_replaces_and_deletes` (three POSTs, `ratings` rows checked; other tables unchanged by row count); `rate_refuses_cross_origin_unknown_item_and_bad_reason` (403, 404, 400).
-- [ ] test: `digest_cards_carry_rating_controls_and_stay_under_24_kib`; `reasons_partial_lists_the_four_reasons_for_the_sign`; a rated card renders the choice and the undo.
-- [ ] No inline script: the page test asserts no `hx-on` and the CSP test is unchanged.
+- [x] test: `rate_stores_replaces_and_deletes` (three POSTs, `ratings` rows checked; other tables unchanged by row count); `rate_refuses_cross_origin_unknown_item_and_bad_reason` (403, 404, 400).
+- [x] test: `digest_cards_carry_rating_controls_and_stay_under_24_kib`; `reasons_partial_lists_the_four_reasons_for_the_sign`; a rated card renders the choice and the undo.
+- [x] No inline script: the page test asserts no `hx-on` and the CSP test is unchanged.
 
 **Verification:**
-- [ ] `bin/dc cargo test web`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test web`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 2
 **Files likely touched:** `src/web/routes/rate.rs`, `src/web/routes/mod.rs`, `src/web/views/rate.rs`, `src/web/views/digest.rs`, `src/web/views/layout.rs`, `src/web/app.rs`, `tests/it/web.rs`

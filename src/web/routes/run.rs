@@ -46,7 +46,7 @@ fn wants_json(headers: &HeaderMap) -> bool {
         .is_some_and(|a| a.contains("application/json"))
 }
 
-fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+pub fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|v| v.to_str().ok())
 }
 

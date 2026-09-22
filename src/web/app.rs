@@ -77,6 +77,8 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(routes::digest::today))
         .route("/d/{date}", get(routes::digest::day))
         .route("/r/{id}", get(routes::redirect::click))
+        .route("/rate", post(routes::rate::rate))
+        .route("/rate/reasons", get(routes::rate::reasons))
         .route("/run", post(routes::run::start))
         .route("/run/status", get(routes::run::status))
         .route("/runs", get(routes::runs::index))

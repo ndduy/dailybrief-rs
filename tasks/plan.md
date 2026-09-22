@@ -59,7 +59,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [ ] Review with human
 
 ### Phase 2: Rating UI (`rating-ui`)
-- [ ] Task 3: Rating buttons with inline reasons on the digest card; `POST /rate` (store, replace, un-rate); 24 KiB cap
+- [x] Task 3: Rating buttons with inline reasons on the digest card; `POST /rate` (store, replace, un-rate); 24 KiB cap
 - [ ] Task 4: Positive ratings join the exploit profile as read-like vectors
 
 ### Checkpoint B

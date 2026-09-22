@@ -1534,6 +1534,21 @@ pub fn get_rating(conn: &Connection, item_id: &str) -> Result<Option<RatingRow>,
         .optional()?)
 }
 
+/// The ratings of the items in one digest (at most one per item).
+pub fn list_ratings_for_digest(
+    conn: &Connection,
+    digest_id: &str,
+) -> Result<Vec<RatingRow>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RATING_COLS} FROM ratings \
+         WHERE item_id IN (SELECT item_id FROM digest_items WHERE digest_id = ?1)"
+    ))?;
+    let rows = stmt
+        .query_map([digest_id], map_rating)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 /// Ratings at or after `since`, newest first.
 pub fn list_ratings_since(conn: &Connection, since: &str) -> Result<Vec<RatingRow>, DbError> {
     let mut stmt = conn.prepare(&format!(

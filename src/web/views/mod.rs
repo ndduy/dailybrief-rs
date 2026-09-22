@@ -3,5 +3,6 @@
 pub mod digest;
 pub mod layout;
 pub mod log;
+pub mod rate;
 pub mod run;
 pub mod state;

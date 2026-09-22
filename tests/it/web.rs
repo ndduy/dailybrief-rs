@@ -170,8 +170,8 @@ async fn root_renders_today_and_day_renders_published_digest_with_24_then_6() {
     assert!(body.contains("Topic 1"));
     assert!(body.contains("hx-post=\"/run\""));
     assert!(
-        body.len() < 15 * 1024,
-        "HTML is {} bytes for 30 items",
+        body.len() < 24 * 1024,
+        "HTML is {} bytes for 30 items (cap 24 KiB, spec/m3.md §11 #5)",
         body.len()
     );
 }
@@ -979,4 +979,206 @@ async fn manual_run_cap_counts_runs_not_attempts() {
         StatusCode::TOO_MANY_REQUESTS,
         "the fourth run is over the cap"
     );
+}
+
+// ---------- M3 Task 3: ratings ----------
+
+const DIGEST: &str = "2026-09-17-2026-09-17-abcd1234";
+
+fn rate_req(form: &str, extra: &[(&str, &str)]) -> Request<Body> {
+    let mut b = Request::builder()
+        .method("POST")
+        .uri("/rate")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .header("host", "dailybrief.example")
+        .header("sec-fetch-site", "same-origin");
+    for (k, v) in extra {
+        b = b.header(*k, *v);
+    }
+    b.body(Body::from(form.to_string())).unwrap()
+}
+
+fn reasons_req(query: &str, htmx: bool) -> Request<Body> {
+    let mut b = Request::builder().uri(format!("/rate/reasons?{query}"));
+    if htmx {
+        b = b.header("hx-request", "true");
+    }
+    b.body(Body::empty()).unwrap()
+}
+
+fn ratings(db: &Db) -> Vec<(String, String, String)> {
+    db.with(|c| {
+        Ok(repo::list_ratings_since(c, "2000-01-01T00:00:00.000Z")?
+            .into_iter()
+            .map(|r| (r.item_id, r.sign, r.reason))
+            .collect())
+    })
+    .unwrap()
+}
+
+#[tokio::test]
+async fn rate_stores_replaces_and_deletes() {
+    let db = Db::open_in_memory().unwrap();
+    published(&db);
+    let before = db.with(|c| repo::row_counts(c)).unwrap();
+    let form = "item=i00&sign=up&reason=new_to_me";
+    let (status, _, body) =
+        send(state(db.clone()), rate_req(form, &[("hx-request", "true")])).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("👍 New to me") && body.contains("Undo"),
+        "{body}"
+    );
+    assert!(!body.contains("<html"), "htmx gets the slot only");
+    assert_eq!(
+        ratings(&db),
+        vec![("i00".to_string(), "up".to_string(), "new_to_me".to_string())]
+    );
+    let stored = db.with(|c| repo::get_rating(c, "i00")).unwrap().unwrap();
+    assert_eq!(
+        stored.digest_id.as_deref(),
+        Some(DIGEST),
+        "the newest digest the item was in"
+    );
+    assert_eq!(stored.at, "2026-09-16T23:45:00.000Z");
+    let after = db.with(|c| repo::row_counts(c)).unwrap();
+    let diff: Vec<_> = before.iter().zip(&after).filter(|(a, b)| a != b).collect();
+    assert_eq!(diff.len(), 1, "only ratings changed: {diff:?}");
+    assert_eq!(diff[0].1, &("ratings", 1));
+
+    // A second rating replaces the first (one per item); a plain form post lands on the day.
+    let form = "item=i00&sign=down&reason=too_shallow";
+    let (status, headers, _) = send(state(db.clone()), rate_req(form, &[])).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers["location"], "/d/2026-09-17");
+    assert_eq!(
+        ratings(&db),
+        vec![(
+            "i00".to_string(),
+            "down".to_string(),
+            "too_shallow".to_string()
+        )]
+    );
+
+    // The rated card shows the choice and the undo; the other 29 keep their two buttons.
+    let (_, _, page) = get(db.clone(), "/d/2026-09-17").await;
+    assert!(page.contains("👎 Too shallow"), "{page}");
+    assert_eq!(page.matches("name=\"sign\" value=\"up\"").count(), 29);
+    assert_eq!(page.matches("value=\"none\"").count(), 1, "one undo");
+
+    // sign=none un-rates; the slot goes back to the two buttons.
+    let form = "item=i00&sign=none";
+    let (status, _, body) =
+        send(state(db.clone()), rate_req(form, &[("hx-request", "true")])).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("value=\"up\"") && !body.contains("Undo"),
+        "{body}"
+    );
+    assert!(ratings(&db).is_empty());
+    assert_eq!(db.with(|c| repo::row_counts(c)).unwrap(), before);
+}
+
+#[tokio::test]
+async fn rate_refuses_cross_origin_unknown_item_and_bad_reason() {
+    let db = Db::open_in_memory().unwrap();
+    published(&db);
+    let ok = "item=i00&sign=up&reason=new_to_me";
+    let cross = Request::builder()
+        .method("POST")
+        .uri("/rate")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .header("host", "dailybrief.example")
+        .header("origin", "https://evil.example")
+        .body(Body::from(ok))
+        .unwrap();
+    let (status, _, _) = send(state(db.clone()), cross).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let cases = [
+        ("item=nope&sign=up&reason=new_to_me", StatusCode::NOT_FOUND),
+        ("item=i00&sign=up&reason=off_topic", StatusCode::BAD_REQUEST),
+        ("item=i00&sign=up", StatusCode::BAD_REQUEST),
+        ("item=i00&sign=up&reason=brilliant", StatusCode::BAD_REQUEST),
+        (
+            "item=i00&sign=sideways&reason=new_to_me",
+            StatusCode::BAD_REQUEST,
+        ),
+        ("sign=up&reason=new_to_me", StatusCode::BAD_REQUEST),
+    ];
+    for (form, want) in cases {
+        let (status, _, body) = send(state(db.clone()), rate_req(form, &[])).await;
+        assert_eq!(status, want, "{form}: {body}");
+    }
+    assert!(
+        ratings(&db).is_empty(),
+        "nothing stored by a refused request"
+    );
+}
+
+#[tokio::test]
+async fn digest_cards_carry_rating_controls_and_stay_under_24_kib() {
+    let db = Db::open_in_memory().unwrap();
+    published(&db);
+    let (_, _, body) = get(db, "/d/2026-09-17").await;
+    assert_eq!(body.matches("class=\"rate\"").count(), 30);
+    assert_eq!(body.matches("name=\"sign\" value=\"up\"").count(), 30);
+    assert_eq!(body.matches("name=\"sign\" value=\"down\"").count(), 30);
+    assert_eq!(body.matches("hx-get=\"/rate/reasons\"").count(), 30);
+    assert!(
+        body.contains("action=\"/rate/reasons\""),
+        "plain forms without htmx"
+    );
+    assert!(!body.contains("hx-on"), "no inline handlers under the CSP");
+    assert!(body.len() < 24 * 1024, "HTML is {} bytes", body.len());
+}
+
+#[tokio::test]
+async fn reasons_partial_lists_the_four_reasons_for_the_sign() {
+    let db = Db::open_in_memory().unwrap();
+    published(&db);
+    let up = [
+        "new_to_me",
+        "deep_actionable",
+        "relevant_to_current_work",
+        "good_source",
+    ];
+    let down = ["already_know", "off_topic", "low_quality", "too_shallow"];
+    let (status, _, body) = send(state(db.clone()), reasons_req("item=i00&sign=up", true)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!body.contains("<html"), "htmx gets the partial only");
+    assert_eq!(body.matches("name=\"reason\"").count(), 4);
+    for r in up {
+        assert!(
+            body.contains(&format!("value=\"{r}\"")),
+            "{r} missing: {body}"
+        );
+    }
+    for r in down {
+        assert!(
+            !body.contains(&format!("value=\"{r}\"")),
+            "{r} present: {body}"
+        );
+    }
+    assert!(body.contains("hx-post=\"/rate\"") && body.contains("Cancel"));
+    assert!(!body.contains("hx-on"));
+    let (_, _, body) = send(state(db.clone()), reasons_req("item=i00&sign=down", true)).await;
+    for r in down {
+        assert!(
+            body.contains(&format!("value=\"{r}\"")),
+            "{r} missing: {body}"
+        );
+    }
+    // sign=none is the cancel: the two buttons again.
+    let (_, _, body) = send(state(db.clone()), reasons_req("item=i00&sign=none", true)).await;
+    assert!(body.contains("name=\"sign\" value=\"up\"") && !body.contains("name=\"reason\""));
+    // Without htmx the partial comes as a page (the plain-form fallback).
+    let (status, _, body) = send(state(db.clone()), reasons_req("item=i00&sign=up", false)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<html") && body.contains("value=\"new_to_me\""));
+    let (status, _, _) = send(state(db.clone()), reasons_req("item=i00&sign=maybe", true)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _, _) = send(state(db.clone()), reasons_req("item=zz&sign=up", true)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, _) = send(state(db), reasons_req("item=i00", true)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

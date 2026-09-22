@@ -2,6 +2,7 @@
 
 pub mod digest;
 pub mod log;
+pub mod rate;
 pub mod redirect;
 pub mod run;
 pub mod runs;
