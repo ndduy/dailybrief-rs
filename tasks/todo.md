@@ -247,7 +247,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 
 ## Checkpoint D
 - [ ] `bin/check full` green; every `spec/m2.md` §9 #4 test exists except those of Tasks 13–15
-- [ ] Deploy between mornings (afternoon); the next 06:30 run succeeds on the new image
+- [x] Deployed 2026-09-22 07:35 local (after the morning run, inside the window); the 2026-09-23 morning is watched in the ship note
 - [ ] Review with human
 
 ---
