@@ -1784,3 +1784,130 @@ pub fn insert_source_from_proposal(
     )?;
     Ok(())
 }
+
+// ---------- Curator inputs (M3 Task 6): the week's evidence, read-only ----------
+
+/// A rating with what the reader saw: the item's title, its source and the digest topic.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RatingDetail {
+    pub id: i64,
+    pub item_id: String,
+    pub title: String,
+    pub source: String,
+    pub topic: String,
+    pub sign: String,
+    pub reason: String,
+    pub at: String,
+}
+
+/// Ratings at or after `since`, newest first, joined to the item and the digest row it was
+/// rated from (topic empty when the rating carries no digest).
+pub fn list_rating_details_since(
+    conn: &Connection,
+    since: &str,
+) -> Result<Vec<RatingDetail>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.item_id, i.title, COALESCE(s.title, i.source_id), COALESCE(di.topic, ''),
+                r.sign, r.reason, r.at
+         FROM ratings r
+         JOIN items i ON i.id = r.item_id
+         LEFT JOIN sources s ON s.id = i.source_id
+         LEFT JOIN digest_items di ON di.item_id = r.item_id AND di.digest_id = r.digest_id
+         WHERE r.at >= ?1 ORDER BY r.at DESC, r.id DESC",
+    )?;
+    let rows = stmt
+        .query_map([since], |row| {
+            Ok(RatingDetail {
+                id: row.get(0)?,
+                item_id: row.get(1)?,
+                title: row.get(2)?,
+                source: row.get(3)?,
+                topic: row.get(4)?,
+                sign: row.get(5)?,
+                reason: row.get(6)?,
+                at: row.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadDetail {
+    pub item_id: String,
+    pub title: String,
+    pub source: String,
+    pub at: String,
+}
+
+/// Reads at or after `since`, newest first, with the item's title and source.
+pub fn list_read_details_since(conn: &Connection, since: &str) -> Result<Vec<ReadDetail>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.item_id, i.title, COALESCE(s.title, i.source_id), r.at
+         FROM reads r JOIN items i ON i.id = r.item_id LEFT JOIN sources s ON s.id = i.source_id
+         WHERE r.at >= ?1 ORDER BY r.at DESC, r.id DESC",
+    )?;
+    let rows = stmt
+        .query_map([since], |row| {
+            Ok(ReadDetail {
+                item_id: row.get(0)?,
+                title: row.get(1)?,
+                source: row.get(2)?,
+                at: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// How the explore slots did: distinct beyond_radar items shown in digests published at or
+/// after `since`, how many of them were read, how many rated up (any time).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExploreStats {
+    pub shown: i64,
+    pub read: i64,
+    pub rated_up: i64,
+}
+
+pub fn explore_stats_since(conn: &Connection, since: &str) -> Result<ExploreStats, DbError> {
+    Ok(conn.query_row(
+        "WITH shown AS (
+             SELECT DISTINCT di.item_id FROM digest_items di
+             JOIN digests d ON d.id = di.digest_id
+             WHERE di.section = 'beyond_radar' AND d.published_at >= ?1
+         )
+         SELECT count(*),
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM reads r WHERE r.item_id = shown.item_id)),
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM ratings g WHERE g.item_id = shown.item_id AND g.sign = 'up'))
+         FROM shown",
+        [since],
+        |row| {
+            Ok(ExploreStats {
+                shown: row.get(0)?,
+                read: row.get(1)?,
+                rated_up: row.get(2)?,
+            })
+        },
+    )?)
+}
+
+/// Feed issues at or after `since`, newest first.
+pub fn list_feed_issues_since(conn: &Connection, since: &str) -> Result<Vec<FeedIssue>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, source_id, run_id, kind, note, at FROM feed_issues
+         WHERE at >= ?1 ORDER BY at DESC, id DESC",
+    )?;
+    let rows = stmt
+        .query_map([since], |row| {
+            Ok(FeedIssue {
+                id: row.get(0)?,
+                source_id: row.get(1)?,
+                run_id: row.get(2)?,
+                kind: row.get(3)?,
+                note: row.get(4)?,
+                at: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}

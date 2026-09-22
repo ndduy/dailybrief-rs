@@ -1,13 +1,15 @@
-//! The five Curator tools (`spec/m3.md` curator-tools). Tasks 6–8 fill these in; until then
-//! each answers a typed "not available" so the listing and the role wiring can be tested.
+//! The five Curator tools (`spec/m3.md` curator-tools): `get_feedback` and `get_profile` wrap
+//! `core::curator_input`; `find_feeds`, `validate_feed` and `propose_change` follow in Tasks 7–8
+//! (typed "not available" until then).
 
 use rmcp::model::CallToolResult;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::core::curator_input;
 use crate::core::feedback::Evidence;
-use crate::mcp::error::ToolError;
+use crate::mcp::error::{ToolError, ok};
 use crate::mcp::server::DailyBriefServer;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -28,12 +30,21 @@ pub struct ProposeChangeInput {
     pub evidence: Evidence,
 }
 
-pub async fn get_feedback(_s: &DailyBriefServer) -> Result<CallToolResult, ToolError> {
-    Err(ToolError::NotImplemented("get_feedback"))
+pub async fn get_feedback(s: &DailyBriefServer) -> Result<CallToolResult, ToolError> {
+    let now = (s.now)();
+    let fb =
+        s.db.call(move |conn| curator_input::feedback(conn, now, curator_input::WINDOW_DAYS))
+            .await?;
+    Ok(ok(
+        serde_json::to_value(fb).map_err(|e| ToolError::Internal(e.to_string()))?
+    ))
 }
 
-pub async fn get_profile(_s: &DailyBriefServer) -> Result<CallToolResult, ToolError> {
-    Err(ToolError::NotImplemented("get_profile"))
+pub async fn get_profile(s: &DailyBriefServer) -> Result<CallToolResult, ToolError> {
+    let p = s.db.call(|conn| curator_input::profile(conn)).await?;
+    Ok(ok(
+        serde_json::to_value(p).map_err(|e| ToolError::Internal(e.to_string()))?
+    ))
 }
 
 pub async fn find_feeds(_s: &DailyBriefServer, _i: UrlInput) -> Result<CallToolResult, ToolError> {

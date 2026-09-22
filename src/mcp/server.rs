@@ -422,8 +422,10 @@ mod tests {
                 .unwrap()
                 .contains("get_feedback")
         );
-        let r = h.call("get_profile", json!({})).await;
-        assert_eq!(r.is_error, Some(true), "a stub until Task 6");
+        let r = h
+            .call("find_feeds", json!({"url": "https://x.example/"}))
+            .await;
+        assert_eq!(r.is_error, Some(true), "a stub until Task 7");
     }
 
     #[tokio::test]

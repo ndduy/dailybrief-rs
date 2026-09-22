@@ -209,6 +209,138 @@ async fn curator_listing_names_exactly_the_five_tools() {
 }
 
 #[tokio::test]
+async fn get_feedback_window_and_shapes() {
+    let db = seeded();
+    db.with(|c| {
+        repo::insert_digest(
+            c,
+            &repo::DigestInsert {
+                id: "d1".into(),
+                date: "2026-09-15".into(),
+                run_id: RUN.into(),
+                published_at: "2026-09-15T00:00:00.000Z".into(),
+                for_you_count: 1,
+                beyond_radar_count: 1,
+            },
+            &[
+                repo::DigestItemInsert {
+                    item_id: "i00".into(),
+                    section: repo::Section::ForYou,
+                    position: 1,
+                    summary: "s".into(),
+                    why_it_matters: "w".into(),
+                    reason: None,
+                    topic: "Topic 0".into(),
+                },
+                repo::DigestItemInsert {
+                    item_id: "i11".into(),
+                    section: repo::Section::BeyondRadar,
+                    position: 1,
+                    summary: "s".into(),
+                    why_it_matters: "w".into(),
+                    reason: Some("adjacent_field".into()),
+                    topic: "Topic 1".into(),
+                },
+            ],
+        )?;
+        repo::upsert_rating(
+            c,
+            "i00",
+            Some("d1"),
+            "down",
+            "already_know",
+            "2026-09-15T01:00:00.000Z",
+        )?;
+        repo::upsert_rating(
+            c,
+            "i11",
+            Some("d1"),
+            "up",
+            "new_to_me",
+            "2026-09-15T02:00:00.000Z",
+        )?;
+        repo::upsert_rating(
+            c,
+            "i22",
+            None,
+            "up",
+            "deep_actionable",
+            "2026-09-01T02:00:00.000Z",
+        )?;
+        repo::insert_read(c, "i11", Some("d1"), "2026-09-15T01:30:00.000Z")?;
+        repo::insert_feed_issue(
+            c,
+            "src3",
+            RUN,
+            "junk",
+            Some("listicles"),
+            "2026-09-16T00:00:00.000Z",
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let rig = Rig::start_as(db, Role::Curator).await;
+    let fb = rig.structured("get_feedback", json!({})).await;
+    assert_eq!(fb["window"]["from"], "2026-09-10T06:00:00.000Z");
+    assert_eq!(fb["window"]["to"], "2026-09-17T06:00:00.000Z");
+    let ratings = fb["ratings"].as_array().unwrap();
+    assert_eq!(
+        ratings.len(),
+        2,
+        "the 2026-09-01 rating is outside the window: {fb}"
+    );
+    assert_eq!(ratings[0]["itemId"], "i11");
+    assert_eq!(ratings[0]["title"], "Title i11");
+    assert_eq!(ratings[0]["source"], "SRC1");
+    assert_eq!(ratings[0]["topic"], "Topic 1");
+    assert_eq!(ratings[0]["sign"], "up");
+    assert_eq!(ratings[0]["reason"], "new_to_me");
+    assert_eq!(fb["reads"][0]["itemId"], "i11");
+    assert_eq!(
+        fb["exploreHitRate"],
+        json!({"shown": 1, "read": 1, "ratedUp": 1})
+    );
+    assert_eq!(fb["feedIssues"][0]["feedId"], "src3");
+    assert_eq!(fb["feedIssues"][0]["kind"], "junk");
+    assert_eq!(fb["feedIssues"][0]["note"], "listicles");
+}
+
+#[tokio::test]
+async fn get_profile_omits_topic_descriptions() {
+    let db = seeded();
+    db.with(|c| {
+        repo::upsert_topic(
+            c,
+            &Topic {
+                id: "secret".into(),
+                name: "Plain Name".into(),
+                description: "SECRET-DESCRIPTION-TEXT".into(),
+                weight: 2.0,
+                origin: TopicOrigin::Seed,
+            },
+        )?;
+        repo::mark_source_failed(c, "src0", "HTTP 500")
+    })
+    .unwrap();
+    let rig = Rig::start_as(db, Role::Curator).await;
+    let p = rig.structured("get_profile", json!({})).await;
+    assert!(!p.to_string().contains("SECRET-DESCRIPTION-TEXT"));
+    let topics = p["topics"].as_array().unwrap();
+    assert_eq!(topics.len(), 5);
+    let secret = topics.iter().find(|t| t["id"] == "secret").unwrap();
+    assert_eq!(secret["name"], "Plain Name");
+    assert_eq!(secret["weight"], 2.0);
+    assert_eq!(secret["origin"], "seed");
+    assert!(secret.get("lastPositiveAt").is_some() && secret.get("saturation").is_some());
+    let sources = p["sources"].as_array().unwrap();
+    assert_eq!(sources.len(), 8);
+    let s0 = sources.iter().find(|s| s["id"] == "src0").unwrap();
+    assert_eq!(s0["failures"], 1);
+    assert_eq!(s0["url"], "https://src0.example/rss");
+    assert!(s0.get("lastOkAt").is_some() && s0["enabled"] == true);
+}
+
+#[tokio::test]
 async fn an_editor_server_has_no_propose_change() {
     let rig = Rig::start(seeded()).await;
     let mut params = CallToolRequestParams::new("propose_change".to_string());

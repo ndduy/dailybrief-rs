@@ -1,6 +1,7 @@
 //! Plain Rust core: fetching, extraction, dedupe, embeddings, scoring, staging (`SPEC.md` §3).
 
 pub mod candidates;
+pub mod curator_input;
 pub mod dedupe;
 pub mod digest;
 pub mod embed;

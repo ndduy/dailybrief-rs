@@ -108,12 +108,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `core::curator_input`: `feedback(conn, now, window_days)` → ratings with item title/source/topic, reads, explore hit-rate (beyond-radar items shown / read / rated up over the window), feed issues; `profile(conn)` → topics (no descriptions) and sources with health. The two tools serialise them (camelCase, `spec/m3.md` §8).
 
 **Acceptance criteria:**
-- [ ] test: `get_feedback_window_and_shapes` (rmcp client; seeded ratings, reads, feed issues; 7-day window; field names); `get_profile_omits_topic_descriptions` (a planted description is absent, as `get_briefing` proves today).
-- [ ] test: `explore_hit_rate_counts_beyond_radar_only`.
+- [x] test: `get_feedback_window_and_shapes` (rmcp client; seeded ratings, reads, feed issues; 7-day window; field names); `get_profile_omits_topic_descriptions` (a planted description is absent, as `get_briefing` proves today).
+- [x] test: `explore_hit_rate_counts_beyond_radar_only`.
 
 **Verification:**
-- [ ] `bin/dc cargo test curator_input mcp`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test curator_input mcp`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 5
 **Files likely touched:** `src/core/curator_input.rs`, `src/core/mod.rs`, `src/mcp/tools/get_feedback.rs`, `src/mcp/tools/get_profile.rs`, `src/db/repo.rs`, `tests/it/mcp.rs`
