@@ -2,6 +2,7 @@
 //! binary so the check budget stays flat as tests are added.
 
 mod auth;
+mod cli;
 mod compose;
 mod feedback;
 mod harness;

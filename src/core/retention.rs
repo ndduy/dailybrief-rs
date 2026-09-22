@@ -361,4 +361,74 @@ mod tests {
             ["r-400"]
         );
     }
+
+    /// The prune cutoff is exclusive (a run started exactly `days` ago stays) and the title
+    /// dedupe window is inclusive (a title seen exactly at `since` counts).
+    #[tokio::test]
+    async fn prune_and_title_window_boundaries() {
+        let (tmp, db) = rig();
+        let at_cutoff = cutoff(now(), 60);
+        let just_before =
+            to_iso(now() - chrono::Duration::days(60) - chrono::Duration::milliseconds(1));
+        for (id, started) in [
+            ("at-cutoff", at_cutoff.as_str()),
+            ("before-cutoff", just_before.as_str()),
+        ] {
+            db.with(|c| {
+                repo::insert_run(
+                    c,
+                    &NewRun {
+                        id: id.into(),
+                        kind: RunKind::Scheduled,
+                        role: Role::Editor,
+                        harness: "test".into(),
+                        attempt: 1,
+                        started_at: started.into(),
+                        transcript_path: None,
+                    },
+                )?;
+                repo::finish_run(
+                    c,
+                    id,
+                    &RunFinish {
+                        status: RunStatus::Success,
+                        ended_at: started.into(),
+                        turns: None,
+                        usage_json: None,
+                        cost_usd: None,
+                        session_id: None,
+                        error: None,
+                    },
+                )
+            })
+            .unwrap();
+        }
+        let items = plan(&db, tmp.path(), now(), 60).await.unwrap();
+        let ids: Vec<&str> = items.iter().map(|i| i.run_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["before-cutoff"],
+            "started_at < cutoff prunes; == cutoff keeps"
+        );
+        // Title window: `has_title_hash_since` is `>=`.
+        db.with(|c| {
+            crate::core::testutil::source(c, "s")?;
+            let mut item =
+                crate::core::testutil::new_item("t1", "s", None, "2026-09-10T00:00:00.000Z");
+            item.title_hash = "hash-x".into();
+            repo::insert_item(c, &item)?;
+            assert!(repo::has_title_hash_since(
+                c,
+                "hash-x",
+                "2026-09-10T00:00:00.000Z"
+            )?);
+            assert!(!repo::has_title_hash_since(
+                c,
+                "hash-x",
+                "2026-09-10T00:00:00.001Z"
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    }
 }

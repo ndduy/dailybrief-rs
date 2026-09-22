@@ -101,4 +101,49 @@ mod tests {
         assert_eq!(a, b, "both callers see the same report");
         server.verify().await; // one request, not two
     }
+
+    /// Three callers released by one barrier hit the tool at the same instant; the feed is
+    /// still fetched once and every caller gets that report.
+    #[tokio::test]
+    async fn fetch_sources_concurrent_with_barrier() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/rss"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_millis(100))
+                    .set_body_string(
+                        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>t</title><link>x</link><description>d</description></channel></rss>",
+                    ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let feeds = vec![Feed {
+            id: "only".into(),
+            url: format!("{}/rss", server.uri()),
+            title: "Only".into(),
+            weight: 1.0,
+            enabled: true,
+        }];
+        let h = std::sync::Arc::new(
+            Harness::start(server_with_feeds(Db::open_in_memory().unwrap(), feeds)).await,
+        );
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(3));
+        let mut tasks = Vec::new();
+        for _ in 0..3 {
+            let (h, b) = (std::sync::Arc::clone(&h), std::sync::Arc::clone(&barrier));
+            tasks.push(tokio::spawn(async move {
+                b.wait().await;
+                structured(&h.call("fetch_sources", json!({})).await)
+            }));
+        }
+        let mut reports = Vec::new();
+        for t in tasks {
+            reports.push(t.await.unwrap());
+        }
+        assert!(reports.iter().all(|r| r == &reports[0]), "{reports:?}");
+        assert_eq!(reports[0]["fetched"], 1);
+        server.verify().await;
+    }
 }

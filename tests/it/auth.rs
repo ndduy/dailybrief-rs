@@ -1,6 +1,7 @@
 //! The Access JWT middleware against a wiremock JWKS with a key generated for the test run.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -75,15 +76,23 @@ fn issuer() -> String {
 }
 
 fn state_with_access(jwks_url: &str) -> AppState {
+    state_with_access_interval(jwks_url, None)
+}
+
+/// `interval` overrides the forced-refetch throttle (the production value is 60 s).
+fn state_with_access_interval(jwks_url: &str, interval: Option<Duration>) -> AppState {
     let config = load_config(&Env::from_lookup(|_| None).unwrap()).unwrap();
     let tz = parse_tz(&config.service.timezone).unwrap();
-    let verifier = AccessVerifier::new(
+    let mut verifier = AccessVerifier::new(
         AccessSettings {
             aud: AUD.into(),
             team: TEAM.into(),
         },
         Some(jwks_url.to_string()),
     );
+    if let Some(i) = interval {
+        verifier = verifier.with_forced_min_interval(i);
+    }
     AppState::new(Db::open_in_memory().unwrap(), config, tz, now, None)
         .with_access(Some(Arc::new(verifier)))
 }
@@ -186,11 +195,17 @@ async fn auth_refetches_on_unknown_kid_and_caches_otherwise() {
         1,
         "one refetch after the reset"
     );
-    // A kid that never appears: refetch once, then 401.
+    // A kid that never appears, right after the forced refetch above: the refetch is
+    // throttled (one per minute), so the answer is a 401 from the cache with no request.
     let k3 = key("k3");
     assert_eq!(
         get_with(state, "/", Some(&token(&k3, AUD, &issuer(), 600))).await,
         StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "the throttled unknown kid made no request"
     );
 }
 
@@ -286,5 +301,45 @@ async fn jwks_forced_refetch_is_throttled() {
     assert_eq!(
         get_with(state, "/", Some(&token(&k1, AUD, &issuer(), 600))).await,
         StatusCode::OK
+    );
+}
+
+/// After the throttle interval passes, an unknown kid forces a refetch again (and finds the
+/// rotated key).
+#[tokio::test]
+async fn jwks_forced_refetch_resumes_after_the_interval() {
+    let k1 = key("k1");
+    let k2 = key("k2");
+    let k3 = key("k3");
+    let server = MockServer::start().await;
+    mount_jwks(&server, &[&k1]).await;
+    let url = format!("{}/cdn-cgi/access/certs", server.uri());
+    let state = state_with_access_interval(&url, Some(Duration::from_millis(80)));
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k1, AUD, &issuer(), 600))).await,
+        StatusCode::OK
+    );
+    // Unknown kid: one forced refetch (still k1 only) → 401.
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k2, AUD, &issuer(), 600))).await,
+        StatusCode::UNAUTHORIZED
+    );
+    // Straight away another unknown kid: throttled, no request.
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k3, AUD, &issuer(), 600))).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    // The key rotates and the interval passes: the next unknown kid refetches and verifies.
+    mount_jwks(&server, &[&k1, &k2]).await;
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    assert_eq!(
+        get_with(state.clone(), "/", Some(&token(&k2, AUD, &issuer(), 600))).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "one refetch after the interval (the mock was reset by mount_jwks)"
     );
 }

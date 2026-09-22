@@ -121,6 +121,12 @@ impl AccessVerifier {
         }
     }
 
+    /// Test constructor: a shorter throttle for the forced (unknown kid) refetch.
+    pub fn with_forced_min_interval(mut self, interval: Duration) -> Self {
+        self.forced_min_interval = interval;
+        self
+    }
+
     async fn fetch_jwks(&self) -> Result<JwkSet, AuthError> {
         let resp = self
             .client

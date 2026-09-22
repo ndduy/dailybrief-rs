@@ -3,6 +3,7 @@
 //! Feeds run concurrently under a total time budget; a feed that finishes keeps its items even
 //! when the budget cuts the rest short.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -45,6 +46,10 @@ pub struct FeedReport {
     pub new_items: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Stored items per extractor (`dom_smoothie` / `readability`), ADR 0014's measurement;
+    /// counted after dedupe, so only what the database kept.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extractors: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -115,6 +120,7 @@ impl Ingester {
                         status: FeedStatus::Failed,
                         new_items: 0,
                         error: Some(format!("task failed: {e}")),
+                        extractors: BTreeMap::new(),
                     }),
                     None => break,
                 },
@@ -137,6 +143,7 @@ impl Ingester {
                     status: FeedStatus::Failed,
                     new_items: 0,
                     error: Some("ingest budget exceeded".into()),
+                    extractors: BTreeMap::new(),
                 });
             }
         }
@@ -149,18 +156,23 @@ impl Ingester {
     }
 
     async fn ingest_feed(&self, feed: &Feed) -> FeedReport {
-        let report = |status, new_items, error: Option<String>| FeedReport {
+        let report = |status, new_items, error: Option<String>, extractors| FeedReport {
             id: feed.id.clone(),
             source: feed.title.clone(),
             status,
             new_items,
             error,
+            extractors,
         };
         match self.ingest_feed_inner(feed).await {
-            Ok(FeedOutcome::NotModified) => report(FeedStatus::NotModified, 0, None),
-            Ok(FeedOutcome::Stored(n)) => report(FeedStatus::Ok, n, None),
-            Ok(FeedOutcome::Failed(msg)) => report(FeedStatus::Failed, 0, Some(msg)),
-            Err(e) => report(FeedStatus::Failed, 0, Some(e.to_string())),
+            Ok(FeedOutcome::NotModified) => {
+                report(FeedStatus::NotModified, 0, None, BTreeMap::new())
+            }
+            Ok(FeedOutcome::Stored(n, extractors)) => report(FeedStatus::Ok, n, None, extractors),
+            Ok(FeedOutcome::Failed(msg)) => {
+                report(FeedStatus::Failed, 0, Some(msg), BTreeMap::new())
+            }
+            Err(e) => report(FeedStatus::Failed, 0, Some(e.to_string()), BTreeMap::new()),
         }
     }
 
@@ -212,7 +224,7 @@ impl Ingester {
                 etag,
                 last_modified,
             } => {
-                let stored = self.store_entries(feed, entries, now).await?;
+                let (stored, extractors) = self.store_entries(feed, entries, now).await?;
                 let id = feed.id.clone();
                 let at = to_iso(now);
                 self.db
@@ -226,7 +238,7 @@ impl Ingester {
                         )
                     })
                     .await?;
-                Ok(FeedOutcome::Stored(stored))
+                Ok(FeedOutcome::Stored(stored, extractors))
             }
         }
     }
@@ -237,7 +249,7 @@ impl Ingester {
         feed: &Feed,
         entries: Vec<Entry>,
         now: DateTime<Utc>,
-    ) -> Result<usize, IngestError> {
+    ) -> Result<(usize, BTreeMap<String, usize>), IngestError> {
         let mut pending: Vec<(repo::NewItem, Extractor)> = Vec::new();
         let since = days_ago_iso(now, DEDUPE_DAYS);
         for entry in entries {
@@ -290,7 +302,7 @@ impl Ingester {
             ));
         }
         if pending.is_empty() {
-            return Ok(0);
+            return Ok((0, BTreeMap::new()));
         }
         // Embed outside the DB lock (ADR 0002), in one batch per feed.
         let texts: Vec<String> = pending
@@ -337,16 +349,21 @@ impl Ingester {
             .await?;
         // ADR 0014's measurement: which parser produced each *stored* item (a duplicate that
         // was extracted and then dropped would otherwise inflate the count).
+        let mut extractors: BTreeMap<String, usize> = BTreeMap::new();
         for (extractor, words) in &stored {
             tracing::info!(feed = %feed.id, extractor = extractor.as_str(), words, "extracted");
+            *extractors
+                .entry(extractor.as_str().to_string())
+                .or_default() += 1;
         }
-        Ok(stored.len())
+        Ok((stored.len(), extractors))
     }
 }
 
 enum FeedOutcome {
     NotModified,
-    Stored(usize),
+    /// Items stored and, per extractor, how many.
+    Stored(usize, BTreeMap<String, usize>),
     Failed(String),
 }
 
@@ -769,60 +786,37 @@ mod tests {
         );
     }
 
-    /// ADR 0014's `extracted` log names stored items only: two entries whose bodies differ but
-    /// whose titles collide store one item and log one line (M3 code-review backlog #7).
-    #[test]
-    fn extracted_log_fires_after_dedupe() {
-        use std::sync::{Arc, Mutex};
-        #[derive(Clone)]
-        struct Sink(Arc<Mutex<Vec<u8>>>);
-        impl std::io::Write for Sink {
-            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().unwrap().extend_from_slice(b);
-                Ok(b.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
+    /// ADR 0014's `extracted` count names stored items only: two entries whose bodies differ
+    /// but whose titles collide store one item and count one extraction (M3 code-review
+    /// backlog #7); the log line fires from the same loop, after dedupe.
+    #[tokio::test]
+    async fn extracted_log_fires_after_dedupe() {
+        let server = MockServer::start().await;
+        let u = server.uri();
+        mount(
+            &server,
+            "/rss",
+            ResponseTemplate::new(200).set_body_string(rss(&[
+                ("Same Title", &format!("{u}/p1")),
+                ("Same Title", &format!("{u}/p2")),
+            ])),
+        )
+        .await;
+        for p in ["/p1", "/p2"] {
+            mount(
+                &server,
+                p,
+                ResponseTemplate::new(200).set_body_string(html_with_title("Same Title")),
+            )
+            .await;
         }
-        let sink = Sink(Arc::new(Mutex::new(Vec::new())));
-        let writer = sink.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .with_writer(move || writer.clone())
-            .with_ansi(false)
-            .finish();
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let report = tracing::subscriber::with_default(subscriber, || {
-            rt.block_on(async {
-                let server = MockServer::start().await;
-                let u = server.uri();
-                mount(
-                    &server,
-                    "/rss",
-                    ResponseTemplate::new(200).set_body_string(rss(&[
-                        ("Same Title", &format!("{u}/p1")),
-                        ("Same Title", &format!("{u}/p2")),
-                    ])),
-                )
-                .await;
-                for p in ["/p1", "/p2"] {
-                    mount(
-                        &server,
-                        p,
-                        ResponseTemplate::new(200).set_body_string(html_with_title("Same Title")),
-                    )
-                    .await;
-                }
-                let ing = ingester(config(10_000));
-                ing.run(&[feed("a", format!("{u}/rss"))]).await.unwrap()
-            })
-        });
-        let log = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
-        let extracted = log.lines().filter(|l| l.contains("extracted")).count();
+        let ing = ingester(config(10_000));
+        let report = ing.run(&[feed("a", format!("{u}/rss"))]).await.unwrap();
         assert_eq!(report.new_items, 1, "{report:?}");
-        assert_eq!(extracted, 1, "one log line per stored item:\n{log}");
+        let mut expect = BTreeMap::new();
+        expect.insert("dom_smoothie".to_string(), 1);
+        assert_eq!(report.per_feed[0].extractors, expect);
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["perFeed"][0]["extractors"]["dom_smoothie"], 1);
     }
 }

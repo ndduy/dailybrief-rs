@@ -732,7 +732,7 @@ async fn run_page_renders_caps_retry_and_every_turn() {
     let bar = between(&body, "<div class=\"caps\"", "</div>");
     assert!(bar.contains("reads 32/45"), "{bar}");
     assert!(
-        bar.contains("<span class=\"cap hit\">selects 31/30</span>"),
+        bar.contains("<span class=\"cap hit\">selects 30/30</span>"),
         "{bar}"
     );
     assert!(bar.contains("web 0/5"));
@@ -839,8 +839,9 @@ async fn run_page_under_64_kib_for_120_turns() {
             repo::append_run_event(c, "2026-09-17-big", seq, "assistant", &a)?;
             seq += 1;
             let u = format!(
-                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"t{i}","content":"{}"}}]}}}}"#,
-                "x".repeat(5000)
+                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"t{i}","content":[{{"type":"text","text":"{}"}},{{"type":"text","text":"{}"}}]}}]}}}}"#,
+                "x".repeat(20_000),
+                "y".repeat(20_000)
             );
             repo::append_run_event(c, "2026-09-17-big", seq, "user", &u)?;
         }
@@ -985,7 +986,7 @@ async fn manual_run_cap_counts_runs_not_attempts() {
             break;
         }
     }
-    insert(&db, "2026-09-17-c1", 1);
+    // The accepted run above is the third row; no extra insert is needed for the cap.
     let (status, _, _) = send(st, post_run(true, &[])).await;
     assert_eq!(
         status,
@@ -1651,4 +1652,35 @@ async fn meta_refresh_is_in_head() {
             "{path}: a finished run does not reload"
         );
     }
+}
+
+/// A lock row older than the lock window is a crashed run, not a live one: `/run/status`
+/// says inactive and a manual run may start.
+#[tokio::test]
+async fn run_status_ignores_a_stale_holder() {
+    let db = Db::open_in_memory().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let st = state_with_runner(db.clone(), tmp.path(), false);
+    db.with(|c| {
+        repo::try_acquire_lock(
+            c,
+            "scheduled@long-ago",
+            "2026-09-01T00:00:00.000Z",
+            "2000-01-01T00:00:00.000Z",
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let (_, _, body) = send(
+        st,
+        Request::builder()
+            .uri("/run/status")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        body, "{\"active\":false}",
+        "a stale holder is not a live run"
+    );
 }

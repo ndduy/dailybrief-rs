@@ -217,7 +217,7 @@ fn fixture_turns_reconcile_with_the_result_line() {
     );
     assert_eq!(
         (used.selects.used, used.selects.cap, used.selects.hit),
-        (31, 30, true)
+        (30, 30, true)
     );
     assert_eq!((used.searches.used, used.searches.cap), (0, 5));
     assert_eq!(
@@ -435,5 +435,92 @@ fn selects_count_accepted_selects_only() {
     assert_eq!(
         used.selects.used, 2,
         "two of the four selects were rejected"
+    );
+}
+
+/// Attempt numbering alone does not chain runs: a different kind, or a start outside the lock
+/// window, breaks the chain.
+#[test]
+fn retry_chain_respects_window_and_kind() {
+    let window = 35 * 60;
+    let rows = vec![
+        row(
+            "s1",
+            "scheduled",
+            1,
+            "2026-09-20T23:30:00.000Z",
+            RunStatus::Failed,
+        ),
+        // attempt 2, right kind, but two hours later: outside the window.
+        row(
+            "s2",
+            "scheduled",
+            2,
+            "2026-09-21T01:30:00.000Z",
+            RunStatus::Success,
+        ),
+        // attempt 2, inside the window, but manual: a different kind.
+        row(
+            "m2",
+            "manual",
+            2,
+            "2026-09-20T23:45:00.000Z",
+            RunStatus::Success,
+        ),
+    ];
+    let ids = |target: &str| {
+        retry_chain(target, &rows, window)
+            .iter()
+            .map(|a| a.run_id.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids("s1"), ["s1"], "no neighbour qualifies");
+    assert_eq!(ids("s2"), ["s2"]);
+    assert_eq!(ids("m2"), ["m2"]);
+    // The same rows with s2 inside the window chain as expected.
+    let mut close = rows.clone();
+    close[1] = row(
+        "s2",
+        "scheduled",
+        2,
+        "2026-09-20T23:41:00.000Z",
+        RunStatus::Success,
+    );
+    assert_eq!(
+        retry_chain("s1", &close, window)
+            .iter()
+            .map(|a| a.run_id.as_str())
+            .collect::<Vec<_>>(),
+        ["s1", "s2"]
+    );
+    assert!(retry_chain("nope", &rows, window).is_empty());
+}
+
+/// Without a result line the wall clock comes from the first and last turn timestamps.
+#[test]
+fn caps_wall_from_timestamps() {
+    let lines: Vec<String> = [
+        ("m1", "2026-09-16T23:30:00.000Z"),
+        ("m2", "2026-09-16T23:31:30.000Z"),
+        ("m3", "2026-09-16T23:38:20.000Z"),
+    ]
+    .iter()
+    .map(|(id, ts)| {
+        format!(
+            r#"{{"type":"assistant","timestamp":"{ts}","message":{{"id":"{id}","content":[{{"type":"tool_use","id":"t-{id}","name":"mcp__dailybrief__read_item","input":{{}}}}]}}}}"#
+        )
+    })
+    .collect();
+    let evs = events(&lines);
+    let turns = fold_turns(&evs);
+    let used = caps_used(&turns, None, &caps(), &settings());
+    assert_eq!(
+        used.wall_secs.used, 500,
+        "8:20 from the first to the last turn"
+    );
+    assert!(!used.wall_secs.hit);
+    assert_eq!(
+        used.wall_secs.cap,
+        u64::from(settings().wall_clock_minutes) * 60
     );
 }

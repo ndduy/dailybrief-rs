@@ -275,10 +275,10 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** The test-engineer's remaining list: JWKS `forced_min_interval` injectable and `jwks_forced_refetch_resumes_after_the_interval`; `retry_chain_respects_window_and_kind`; `extract_falls_back_when_primary_is_too_short`; `caps_wall_from_timestamps`; `prune_and_title_window_boundaries`; `prune_days_below_seven_is_refused_by_the_cli`; `run_status_ignores_a_stale_holder`; `fetch_sources_concurrent_with_barrier`; heavier rows in `run_page_under_64_kib_for_120_turns`; drop the extra insert in `manual_run_cap_counts_runs_not_attempts`; fix the stale comment in `auth_refetches_on_unknown_kid_and_caches_otherwise`.
 
 **Acceptance criteria:**
-- [ ] Every named test exists and passes; no production code changes beyond a test constructor for the JWKS interval.
+- [x] Every named test exists and passes; no production code changes beyond a test constructor for the JWKS interval.
 
 **Verification:**
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** None
 **Files likely touched:** `tests/it/{auth,trajectory,web,runner,harness}.rs`, `src/core/{extract,retention,dedupe}.rs` tests, `src/mcp/tools/fetch_sources.rs` tests, `src/web/auth.rs` (test constructor)

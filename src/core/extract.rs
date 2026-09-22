@@ -166,4 +166,28 @@ mod tests {
         assert!(!e.text.is_empty());
         assert!(e.word_count >= MIN_WORDS, "{}", e.word_count);
     }
+
+    /// `dom_smoothie` drops hidden content and finds nothing usable on a page whose only text
+    /// is in a hidden block; the `readability` fallback still reads it, so the item is not lost
+    /// and the extractor is reported as such.
+    #[test]
+    fn extract_falls_back_when_primary_is_too_short() {
+        let words: Vec<String> = (1..=60).map(|i| format!("word{i}")).collect();
+        let html = format!(
+            "<html><head><title>Hidden note</title></head><body><div hidden>{}</div></body></html>",
+            words.join(" ")
+        );
+        let e = extract(&html, Some("https://x.example/hidden")).unwrap();
+        assert_eq!(e.extractor, Extractor::Readability);
+        assert_eq!(e.word_count, 60);
+        // The page with the same words in a paragraph takes the primary path.
+        let plain = format!(
+            "<html><head><title>Plain note</title></head><body><p>{}</p></body></html>",
+            words.join(" ")
+        );
+        assert_eq!(
+            extract(&plain, None).unwrap().extractor,
+            Extractor::DomSmoothie
+        );
+    }
 }
