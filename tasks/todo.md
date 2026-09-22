@@ -163,12 +163,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `prompts/curator.md` (byte-stable; inputs via tools; web search cap 8 from topic names; propose with evidence; end with the structured output); `CuratorOutput { runId, proposals: Vec<String>, notes ≤ 500 }` → `schemas/curator.json` (`gen-schemas --check` covers both files). The runner takes a `Role`: prompt, schema, user message and `mcp.json` role by role; `runs.role` written; verification for curator runs = the output parses and every listed proposal id exists (an empty list with notes is a success). `dailybrief curate [--attempts] [--max-turns]`. Fixture `curator-success.jsonl` hand-written (get_feedback → get_profile → propose_change ×2 → output).
 
 **Acceptance criteria:**
-- [ ] test: `curator_run_writes_proposals_under_role_curator` (runner + fake; two proposal rows from the transcript's tool calls, `runs.role = 'curator'`); `curator_run_with_no_proposals_is_a_success_with_notes`; `curator_prompt_is_byte_stable_and_names_no_date`; `gen_schemas_check_covers_curator_json`.
-- [ ] test: `day_pages_ignore_curator_runs` (a failed curator run on a day with no digest renders "No run yet", not the failed state); `/runs` shows the role column.
+- [x] test: `curator_run_writes_proposals_under_role_curator` (runner + fake; two proposal rows from the transcript's tool calls, `runs.role = 'curator'`); `curator_run_with_no_proposals_is_a_success_with_notes`; `curator_prompt_is_byte_stable_and_names_no_date`; `gen_schemas_check_covers_curator_json`.
+- [x] test: `day_pages_ignore_curator_runs` (a failed curator run on a day with no digest renders "No run yet", not the failed state); `/runs` shows the role column.
 
 **Verification:**
-- [ ] `bin/dc cargo test runner web`; `bin/dc cargo run --bin gen-schemas -- --check`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test runner web`; `bin/dc cargo run --bin gen-schemas -- --check`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 8
 **Files likely touched:** `prompts/curator.md`, `schemas/curator.json`, `src/editor/curator_output.rs`, `src/bin/gen_schemas.rs`, `src/harness/runner.rs`, `src/harness/service_runner.rs`, `src/commands/curate.rs`, `src/main.rs`, `src/web/routes/digest.rs`, `tests/fixtures/transcripts/curator-success.jsonl`, `tests/it/runner.rs`

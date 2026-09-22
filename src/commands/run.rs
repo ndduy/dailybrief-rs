@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::config::{Env, HarnessName, load_all};
 use crate::core::embed::embedder_for;
 use crate::db::Db;
-use crate::db::repo::RunKind;
+use crate::db::repo::{Role, RunKind};
 use crate::harness::runner::{RunSummary, RunnerError};
 use crate::harness::service_runner::{ServiceRunner, ServiceRunnerError, ServiceRunnerOptions};
 
@@ -18,6 +18,8 @@ use super::{CommandError, db_path};
 pub struct RunArgs {
     pub harness: Option<String>,
     pub kind: RunKind,
+    /// Editor for `run`, Curator for `curate`.
+    pub role: Role,
     pub prompt: Option<PathBuf>,
     pub schema: Option<PathBuf>,
     pub message: Option<String>,
@@ -58,6 +60,7 @@ pub async fn run(
         embedder_for(&loaded.config),
         process_env,
         ServiceRunnerOptions {
+            role: args.role,
             system_prompt_path: prompt,
             schema_path: schema,
             user_message: args.message,

@@ -77,7 +77,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [ ] Review with human
 
 ### Phase 4: Curator run (`curator-run`)
-- [ ] Task 9: `prompts/curator.md`, `CuratorOutput` → `schemas/curator.json`, runner role, verification, `dailybrief curate`, fake fixture
+- [x] Task 9: `prompts/curator.md`, `CuratorOutput` → `schemas/curator.json`, runner role, verification, `dailybrief curate`, fake fixture
 - [ ] Task 10: `harness::hook` policy, `dailybrief hook`, per-run `settings.json` and `--settings` in argv, fake end-to-end (ADR 0019 draft)
 - [ ] Task 11: Scheduler as a job list; `[curator] cron`; Sunday 07:30 in `serve`
 

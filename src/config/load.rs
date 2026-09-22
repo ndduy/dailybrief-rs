@@ -97,6 +97,8 @@ pub fn resolve_paths(config_path: &Path, data_dir: &Path, env: &Env) -> Paths {
         mcp_template: config_dir.join("mcp.json"),
         editor_prompt: root.join("prompts/editor.md"),
         digest_schema: root.join("schemas/digest.json"),
+        curator_prompt: root.join("prompts/curator.md"),
+        curator_schema: root.join("schemas/curator.json"),
         data_dir,
     }
 }

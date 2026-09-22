@@ -11,7 +11,7 @@ use tokio::io::AsyncWriteExt;
 
 use super::claude_code::event_type;
 use super::types::{HarnessKind, HarnessRequest, RunOutcome};
-use super::verify::verify_digest_outcome;
+use super::verify::verify_outcome;
 use crate::config::Config;
 use chrono_tz::Tz;
 
@@ -65,6 +65,9 @@ pub struct Runner {
     pub db: Db,
     pub config: Config,
     pub harness: HarnessKind,
+    /// Editor or Curator: the `runs.role`, the MCP tool set (via `mcp.json`) and the
+    /// verification rule. The prompt, schema and user message are chosen by the caller.
+    pub role: Role,
     pub system_prompt_path: PathBuf,
     pub json_schema: serde_json::Value,
     pub user_message: String,
@@ -173,7 +176,7 @@ impl Runner {
                 command: &command,
                 args: &self.config.harness.mcp_args,
                 run_id: &run_id,
-                role: Role::Editor.as_str(),
+                role: self.role.as_str(),
                 config_path: &self.config.paths.config,
                 data_dir: &self.config.paths.data_dir,
             },
@@ -184,7 +187,7 @@ impl Runner {
             let row = NewRun {
                 id: run_id.clone(),
                 kind,
-                role: Role::Editor,
+                role: self.role,
                 harness: self.harness.name().to_string(),
                 attempt: i64::from(attempt_no),
                 started_at: to_iso(started),
@@ -194,7 +197,7 @@ impl Runner {
                 .call(move |conn| repo::insert_run(conn, &row))
                 .await?;
         }
-        tracing::info!(run_id = %run_id, kind = kind.as_str(), attempt = attempt_no, "run started");
+        tracing::info!(run_id = %run_id, kind = kind.as_str(), role = self.role.as_str(), attempt = attempt_no, "run started");
 
         // Every raw line goes to the transcript file and run_events through one writer task. The
         // channel is bounded: when the writer is behind, the adapter waits and the child blocks on
@@ -279,10 +282,10 @@ impl Runner {
             RunOutcome::Failed { message, .. } => (RunStatus::Failed, Some(message.clone())),
             RunOutcome::Success { .. } if !self.verify => (RunStatus::Success, None),
             RunOutcome::Success { .. } => {
-                let (id, outcome) = (run_id.to_string(), outcome.clone());
+                let (id, outcome, role) = (run_id.to_string(), outcome.clone(), self.role);
                 match self
                     .db
-                    .call(move |conn| verify_digest_outcome(conn, &id, &outcome))
+                    .call(move |conn| verify_outcome(conn, role, &id, &outcome))
                     .await?
                 {
                     Ok(()) => (RunStatus::Success, None),

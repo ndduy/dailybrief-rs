@@ -1233,6 +1233,26 @@ pub fn latest_run_between(
         .optional()?)
 }
 
+/// The newest run of one role that started in `[from, to)`; the day pages ask for the
+/// Editor's so a Curator run never shows as the day's state.
+pub fn latest_run_of_role_between(
+    conn: &Connection,
+    role: Role,
+    from: &str,
+    to: &str,
+) -> Result<Option<RunRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "SELECT {RUN_COLS} FROM runs WHERE role = ?1 AND started_at >= ?2 AND started_at < ?3
+                 ORDER BY started_at DESC, id DESC LIMIT 1"
+            ),
+            params![role.as_str(), from, to],
+            map_run,
+        )
+        .optional()?)
+}
+
 /// The most recently published digest that showed `item_id`, if any.
 pub fn latest_digest_for_item(conn: &Connection, item_id: &str) -> Result<Option<String>, DbError> {
     Ok(conn

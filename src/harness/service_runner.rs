@@ -9,13 +9,17 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use super::claude_code::{ClaudeCodeAdapter, EnvError, USER_MESSAGE};
+
+/// The Curator's first message (`prompts/curator.md`).
+pub const CURATOR_USER_MESSAGE: &str =
+    "Review this week's feedback and propose profile changes. Start with get_feedback.";
 use super::runner::{RunSummary, Runner, RunnerError, new_run_id};
 use super::types::HarnessKind;
 use crate::config::{Config, Topic};
 use crate::core::embed::Embedder;
 use crate::core::profile::sync_topics;
 use crate::db::Db;
-use crate::db::repo::RunKind;
+use crate::db::repo::{Role, RunKind};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceRunnerError {
@@ -42,6 +46,9 @@ pub enum ServiceRunnerError {
 }
 
 pub struct ServiceRunnerOptions {
+    /// Editor (default) or Curator: picks the prompt, schema, user message, tool set and
+    /// verification unless the overrides below say otherwise.
+    pub role: Role,
     pub system_prompt_path: Option<PathBuf>,
     pub schema_path: Option<PathBuf>,
     pub user_message: Option<String>,
@@ -54,6 +61,7 @@ pub struct ServiceRunnerOptions {
 impl Default for ServiceRunnerOptions {
     fn default() -> Self {
         Self {
+            role: Role::Editor,
             system_prompt_path: None,
             schema_path: None,
             user_message: None,
@@ -110,9 +118,20 @@ impl ServiceRunner {
         opts: ServiceRunnerOptions,
     ) -> Result<Self, ServiceRunnerError> {
         let config = with_max_turns(config, opts.max_turns);
-        let schema_path = opts
-            .schema_path
-            .unwrap_or_else(|| config.paths.digest_schema.clone());
+        let role = opts.role;
+        let (default_prompt, default_schema, default_message) = match role {
+            Role::Editor => (
+                config.paths.editor_prompt.clone(),
+                config.paths.digest_schema.clone(),
+                USER_MESSAGE,
+            ),
+            Role::Curator => (
+                config.paths.curator_prompt.clone(),
+                config.paths.curator_schema.clone(),
+                CURATOR_USER_MESSAGE,
+            ),
+        };
+        let schema_path = opts.schema_path.unwrap_or(default_schema);
         let schema_text =
             std::fs::read_to_string(&schema_path).map_err(|source| ServiceRunnerError::Read {
                 path: schema_path.clone(),
@@ -127,13 +146,12 @@ impl ServiceRunner {
         let runner = Runner {
             tz,
             db,
-            system_prompt_path: opts
-                .system_prompt_path
-                .unwrap_or_else(|| config.paths.editor_prompt.clone()),
+            role,
+            system_prompt_path: opts.system_prompt_path.unwrap_or(default_prompt),
             json_schema,
             user_message: opts
                 .user_message
-                .unwrap_or_else(|| USER_MESSAGE.to_string()),
+                .unwrap_or_else(|| default_message.to_string()),
             now: Utc::now,
             new_id: new_run_id,
             verify: opts.verify,

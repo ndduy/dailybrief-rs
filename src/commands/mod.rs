@@ -1,6 +1,7 @@
 //! CLI verbs (`spec/r0.md` §4). Each verb is a function over the loaded config; `main.rs` maps
 //! `CommandError` into its exit code.
 
+pub mod curate;
 pub mod fetch;
 pub mod mcp;
 pub mod migrate;

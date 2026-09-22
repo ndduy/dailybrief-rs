@@ -6,7 +6,7 @@ use axum::response::{IntoResponse, Response};
 
 use super::internal;
 use crate::core::time::{date_in_zone, day_bounds_utc, parse_date};
-use crate::db::repo::{self, RunStatus};
+use crate::db::repo::{self, Role, RunStatus};
 use crate::web::app::AppState;
 use crate::web::views;
 
@@ -35,7 +35,7 @@ async fn render_day(state: &AppState, date: &str) -> Response {
                 let ratings = repo::list_ratings_for_digest(conn, &digest.id)?;
                 return Ok((Some((digest, cards, ratings)), None));
             }
-            let run = repo::latest_run_between(conn, &from, &to)?;
+            let run = repo::latest_run_of_role_between(conn, Role::Editor, &from, &to)?;
             let events = match &run {
                 Some(r) => repo::list_run_events(conn, &r.id)?,
                 None => Vec::new(),

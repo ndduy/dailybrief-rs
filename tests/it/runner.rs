@@ -10,7 +10,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use dailybrief::config::{Config, Env, load_config};
 use dailybrief::core::embed::FakeEmbedder;
 use dailybrief::db::Db;
-use dailybrief::db::repo::{self, DigestInsert, RunKind, RunStatus};
+use dailybrief::db::repo::{self, DigestInsert, Role, RunKind, RunStatus};
 use dailybrief::harness::claude_code::ClaudeCodeAdapter;
 use dailybrief::harness::runner::{RunSummary, Runner, RunnerError};
 use dailybrief::harness::service_runner::{ServiceRunner, ServiceRunnerOptions};
@@ -77,6 +77,10 @@ struct Rig {
 }
 
 fn rig(attempts: &[&str], hang: bool, verify: bool, wall_clock: Duration) -> Rig {
+    rig_as(Role::Editor, attempts, hang, verify, wall_clock)
+}
+
+fn rig_as(role: Role, attempts: &[&str], hang: bool, verify: bool, wall_clock: Duration) -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("data");
     std::fs::create_dir_all(&data_dir).unwrap();
@@ -88,7 +92,11 @@ fn rig(attempts: &[&str], hang: bool, verify: bool, wall_clock: Duration) -> Rig
     let harness = fake(&config, &script_dir, hang, wall_clock);
     let runner = Runner {
         db: db.clone(),
-        system_prompt_path: root().join("prompts/editor.md"),
+        role,
+        system_prompt_path: root().join(match role {
+            Role::Editor => "prompts/editor.md",
+            Role::Curator => "prompts/curator.md",
+        }),
         json_schema: serde_json::json!({ "type": "object" }),
         user_message: "Build today's digest. Start with get_briefing.".into(),
         now,
@@ -493,4 +501,156 @@ async fn killed_runs_keep_their_transcript_and_events() {
         assert_eq!(events[0].kind, "system");
         assert_eq!(events[1].kind, "assistant");
     }
+}
+
+// ---------- M3 Task 9: Curator runs ----------
+
+fn pending_proposal(db: &Db, id: &str) {
+    db.with(|c| {
+        repo::insert_proposal(
+            c,
+            &repo::NewProposal {
+                id: id.into(),
+                run_id: None,
+                kind: "topic_weight".into(),
+                payload_json: r#"{"kind":"topic_weight","payload":{"topicId":"t2","weight":0.7}}"#
+                    .into(),
+                evidence_json: r#"{"summary":"s"}"#.into(),
+                created_at: "2026-09-17T06:00:30.000Z".into(),
+            },
+        )
+    })
+    .unwrap();
+}
+
+/// The fake replays the Curator's trajectory; the proposal rows its tool calls would have
+/// written are planted so verification (every listed id exists) can pass.
+#[tokio::test]
+async fn curator_run_writes_proposals_under_role_curator() {
+    let r = rig_as(
+        Role::Curator,
+        &["curator-success.jsonl"],
+        false,
+        true,
+        Duration::from_secs(10),
+    );
+    pending_proposal(&r.db, "p-2026-09-20-aaaaaaaa");
+    pending_proposal(&r.db, "p-2026-09-20-bbbbbbbb");
+    let summary = r.runner.run(RunKind::Manual).await.unwrap();
+    assert_eq!(summary.status, "success", "{summary:?}");
+    assert_eq!(summary.attempts, 1);
+    let out = summary.structured_output.unwrap();
+    assert_eq!(
+        out["proposals"],
+        serde_json::json!(["p-2026-09-20-aaaaaaaa", "p-2026-09-20-bbbbbbbb"])
+    );
+    let row = run_row(&r.db, &summary.final_run_id);
+    assert_eq!(row.role, Role::Curator);
+    assert_eq!(row.status, RunStatus::Success);
+    let dir = r
+        .runner
+        .config
+        .paths
+        .data_dir
+        .join("runs")
+        .join(&summary.final_run_id);
+    let mcp: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(
+        mcp["mcpServers"]["dailybrief"]["env"]["DAILYBRIEF_RUN_ROLE"],
+        "curator"
+    );
+    let n: i64 =
+        r.db.with(|c| {
+            Ok(repo::row_counts(c)?
+                .into_iter()
+                .find(|(t, _)| *t == "proposals")
+                .unwrap()
+                .1)
+        })
+        .unwrap();
+    assert_eq!(n, 2);
+}
+
+#[tokio::test]
+async fn curator_run_with_no_proposals_is_a_success_with_notes() {
+    let r = rig_as(
+        Role::Curator,
+        &["curator-empty.jsonl"],
+        false,
+        true,
+        Duration::from_secs(10),
+    );
+    let summary = r.runner.run(RunKind::Scheduled).await.unwrap();
+    assert_eq!(summary.status, "success", "{summary:?}");
+    let out = summary.structured_output.unwrap();
+    assert_eq!(out["proposals"], serde_json::json!([]));
+    assert!(out["notes"].as_str().unwrap().contains("quiet week"));
+    assert_eq!(run_row(&r.db, &summary.final_run_id).role, Role::Curator);
+}
+
+#[tokio::test]
+async fn curator_run_fails_when_a_listed_proposal_is_missing() {
+    let r = rig_as(
+        Role::Curator,
+        &["curator-success.jsonl"],
+        false,
+        true,
+        Duration::from_secs(10),
+    );
+    let summary = r.runner.run(RunKind::Manual).await.unwrap();
+    assert_eq!(summary.status, "failed");
+    assert_eq!(
+        summary.error.as_deref(),
+        Some(
+            "final message lists proposal 'p-2026-09-20-aaaaaaaa' but no such proposal was written"
+        )
+    );
+    assert_eq!(summary.attempts, 2, "verification failure is retried once");
+    assert!(summary.structured_output.is_none());
+}
+
+/// `gen-schemas --check` compares the committed file with the type's schema; the same
+/// comparison here keeps the curator file honest.
+#[test]
+fn gen_schemas_check_covers_curator_json() {
+    let committed: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root().join("schemas/curator.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(committed, dailybrief::editor::curator_output::schema());
+    let digest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(root().join("schemas/digest.json")).unwrap())
+            .unwrap();
+    assert_eq!(digest, dailybrief::editor::digest_output::schema());
+}
+
+/// The service runner picks the Curator's prompt, schema and message from the role alone.
+#[tokio::test]
+async fn service_runner_runs_the_curator_by_role() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path().join("data");
+    std::fs::create_dir_all(&data_dir).unwrap();
+    let script_dir = tmp.path().join("script");
+    std::fs::create_dir_all(&script_dir).unwrap();
+    script(&script_dir, &["curator-empty.jsonl"]);
+    let config = config_in(&data_dir);
+    let db = Db::open(&data_dir.join("brief.db")).unwrap();
+    let harness = fake(&config, &script_dir, false, Duration::from_secs(10));
+    let runner = ServiceRunner::with_harness(
+        config,
+        db.clone(),
+        Vec::new(),
+        Arc::new(FakeEmbedder),
+        harness,
+        ServiceRunnerOptions {
+            role: Role::Curator,
+            max_attempts: 1,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let summary = runner.run(RunKind::Manual).await.unwrap();
+    assert_eq!(summary.status, "success", "{summary:?}");
+    assert_eq!(run_row(&db, &summary.final_run_id).role, Role::Curator);
 }

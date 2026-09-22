@@ -42,13 +42,17 @@ async fn get(db: Db, path: &str) -> (StatusCode, axum::http::HeaderMap, String) 
 }
 
 fn run_row(db: &Db, id: &str, status: RunStatus, error: Option<&str>) {
+    run_row_as(db, id, Role::Editor, status, error);
+}
+
+fn run_row_as(db: &Db, id: &str, role: Role, status: RunStatus, error: Option<&str>) {
     db.with(|c| {
         repo::insert_run(
             c,
             &NewRun {
                 id: id.into(),
                 kind: RunKind::Scheduled,
-                role: Role::Editor,
+                role,
                 harness: "claude-code".into(),
                 attempt: 1,
                 started_at: "2026-09-16T23:30:00.000Z".into(),
@@ -1190,4 +1194,51 @@ async fn reasons_partial_lists_the_four_reasons_for_the_sign() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _, _) = send(state(db), reasons_req("item=i00", true)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+// ---------- M3 Task 9: Curator runs on the pages ----------
+
+/// A Curator run is not the day's state: with no Editor run the day says "No run yet", and
+/// with a successful Editor run before a failed Curator run the digest still shows.
+#[tokio::test]
+async fn day_pages_ignore_curator_runs() {
+    let db = Db::open_in_memory().unwrap();
+    run_row_as(
+        &db,
+        "2026-09-17-cur1",
+        Role::Curator,
+        RunStatus::Failed,
+        Some("curator boom"),
+    );
+    let (status, _, body) = get(db.clone(), "/d/2026-09-17").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("No run yet."), "{body}");
+    assert!(!body.contains("curator boom"));
+    run_row(
+        &db,
+        "2026-09-17-ed1",
+        RunStatus::Failed,
+        Some("editor boom"),
+    );
+    let (_, _, body) = get(db, "/d/2026-09-17").await;
+    assert!(
+        body.contains("editor boom"),
+        "the Editor's failure is the day's state"
+    );
+}
+
+#[tokio::test]
+async fn runs_index_shows_the_role_column() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-ed1", RunStatus::Success, None);
+    run_row_as(
+        &db,
+        "2026-09-17-cur1",
+        Role::Curator,
+        RunStatus::Success,
+        None,
+    );
+    let (_, _, body) = get(db, "/runs").await;
+    assert!(body.contains("<th>Role</th>"), "{body}");
+    assert!(body.contains("<td>curator</td>") && body.contains("<td>editor</td>"));
 }

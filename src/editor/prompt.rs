@@ -36,6 +36,33 @@ mod tests {
 
     const EDITOR: &str = include_str!("../../prompts/editor.md");
     const SMOKE: &str = include_str!("../../prompts/smoke.md");
+    const CURATOR: &str = include_str!("../../prompts/curator.md");
+
+    #[test]
+    fn curator_prompt_is_byte_stable_and_names_no_date() {
+        assert!(
+            !contains_date(CURATOR),
+            "prompts/curator.md contains a date"
+        );
+        assert!(
+            !contains_uuid(CURATOR),
+            "prompts/curator.md contains a UUID"
+        );
+        for tool in [
+            "get_feedback",
+            "get_profile",
+            "find_feeds",
+            "validate_feed",
+            "propose_change",
+        ] {
+            assert!(
+                CURATOR.contains(tool),
+                "{tool} missing from the Curator prompt"
+            );
+        }
+        assert!(CURATOR.contains("at most 8 times"), "the web search cap");
+        assert!(!CURATOR.contains("get_briefing") && !CURATOR.contains("publish_digest"));
+    }
 
     #[test]
     fn editor_prompt_is_byte_stable() {

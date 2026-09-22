@@ -46,6 +46,18 @@ enum Command {
         #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
         max_turns: Option<u32>,
     },
+    /// Run the Curator once now: read the week's feedback, write proposals for /curator.
+    Curate {
+        /// manual | scheduled
+        #[arg(long, default_value = "manual")]
+        kind: String,
+        /// Attempts (1 or 2; 2 = retry once).
+        #[arg(long, default_value_t = 2)]
+        attempts: u32,
+        /// Override harness.claude-code.max_turns for this run.
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        max_turns: Option<u32>,
+    },
     /// Serve the reading pages (and the scheduler) on service.bind:service.port.
     Serve,
     /// Re-embed every item and topic with the current model (first deployment).
@@ -110,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::run::RunArgs {
                     harness,
                     kind,
+                    role: dailybrief::db::repo::Role::Editor,
                     prompt,
                     schema,
                     message,
@@ -117,6 +130,28 @@ async fn main() -> anyhow::Result<()> {
                     attempts,
                     max_turns,
                 },
+                &process_env,
+                &mut std::io::stdout(),
+            )
+            .await?;
+            std::process::exit(code);
+        }
+        Command::Curate {
+            kind,
+            attempts,
+            max_turns,
+        } => {
+            let kind = match kind.as_str() {
+                "manual" => dailybrief::db::repo::RunKind::Manual,
+                "scheduled" => dailybrief::db::repo::RunKind::Scheduled,
+                other => anyhow::bail!("curate: --kind must be manual or scheduled, got '{other}'"),
+            };
+            let process_env: std::collections::HashMap<String, String> = std::env::vars().collect();
+            let code = commands::curate::run(
+                &env,
+                kind,
+                attempts,
+                max_turns,
                 &process_env,
                 &mut std::io::stdout(),
             )

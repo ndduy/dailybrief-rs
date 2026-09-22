@@ -154,7 +154,7 @@ pub fn render_index(runs: &[RunRow]) -> Markup {
                 @else {
                     table {
                         thead { tr {
-                            th { "Run" } th { "Status" } th { "Kind" } th { "Started" }
+                            th { "Run" } th { "Status" } th { "Role" } th { "Kind" } th { "Started" }
                             th.num { "Turns" } th.num { "Wall" } th { "Error" }
                         } }
                         tbody {
@@ -165,6 +165,7 @@ pub fn render_index(runs: &[RunRow]) -> Markup {
                                         " · " a href={ "/runs/" (r.id) "/log" } { "log" }
                                     }
                                     td { span class=(status_class(r.status)) { (r.status.as_str()) } }
+                                    td { (r.role.as_str()) }
                                     td { (r.kind) " #" (r.attempt) }
                                     td { (r.started_at) }
                                     td { @if let Some(t) = r.turns { (t) } }

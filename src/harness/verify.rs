@@ -3,8 +3,49 @@
 //! harness), a digest row exists for this run, and the ids agree.
 
 use super::types::RunOutcome;
+use crate::db::repo::Role;
 use crate::db::{Connection, DbError, repo};
+use crate::editor::curator_output::CuratorOutput;
 use crate::editor::digest_output::DigestOutput;
+
+/// Verification by role: a digest for the Editor, proposals for the Curator.
+pub fn verify_outcome(
+    conn: &Connection,
+    role: Role,
+    run_id: &str,
+    outcome: &RunOutcome,
+) -> Result<Result<(), String>, DbError> {
+    match role {
+        Role::Editor => verify_digest_outcome(conn, run_id, outcome),
+        Role::Curator => verify_curator_outcome(conn, outcome),
+    }
+}
+
+/// A Curator success is a final message that parses as `CuratorOutput` whose every listed
+/// proposal id exists; an empty list is a success (a quiet week).
+pub fn verify_curator_outcome(
+    conn: &Connection,
+    outcome: &RunOutcome,
+) -> Result<Result<(), String>, DbError> {
+    let RunOutcome::Success { result, .. } = outcome else {
+        return Ok(Err("harness did not report success".into()));
+    };
+    let parsed = result
+        .structured_output
+        .clone()
+        .and_then(|v| serde_json::from_value::<CuratorOutput>(v).ok());
+    let Some(output) = parsed else {
+        return Ok(Err("final message did not parse as CuratorOutput (schemas/curator.json is enforced by the harness)".into()));
+    };
+    for id in &output.proposals {
+        if repo::get_proposal(conn, id)?.is_none() {
+            return Ok(Err(format!(
+                "final message lists proposal '{id}' but no such proposal was written"
+            )));
+        }
+    }
+    Ok(Ok(()))
+}
 
 /// `Ok(())` when the outcome is a verified digest, else the one-line reason.
 pub fn verify_digest_outcome(
@@ -182,5 +223,65 @@ mod tests {
             reason.starts_with("final message did not parse as DigestOutput"),
             "{reason}"
         );
+    }
+
+    #[test]
+    fn curator_outcome_needs_parsable_output_and_existing_proposals() {
+        let db = db_with_digest(None);
+        db.with(|c| {
+            repo::insert_proposal(
+                c,
+                &repo::NewProposal {
+                    id: "p-1".into(),
+                    run_id: Some(RUN.into()),
+                    kind: "topic_weight".into(),
+                    payload_json: "{}".into(),
+                    evidence_json: "{}".into(),
+                    created_at: "2026-09-17T06:01:00.000Z".into(),
+                },
+            )
+        })
+        .unwrap();
+        let ok = |v| {
+            db.with(|c| verify_curator_outcome(c, &success(Some(v))))
+                .unwrap()
+        };
+        assert_eq!(ok(json!({ "runId": RUN, "proposals": ["p-1"] })), Ok(()));
+        assert_eq!(
+            ok(json!({ "proposals": [], "notes": "quiet week" })),
+            Ok(())
+        );
+        assert_eq!(
+            ok(json!({ "proposals": ["p-1", "p-9"] })),
+            Err("final message lists proposal 'p-9' but no such proposal was written".into())
+        );
+        assert!(
+            ok(json!({ "digestId": "x" }))
+                .unwrap_err()
+                .contains("CuratorOutput")
+        );
+        let no = db
+            .with(|c| {
+                verify_curator_outcome(
+                    c,
+                    &super::super::types::RunOutcome::Killed {
+                        message: "k".into(),
+                        init: None,
+                    },
+                )
+            })
+            .unwrap();
+        assert_eq!(no, Err("harness did not report success".into()));
+        let by_role = db
+            .with(|c| {
+                verify_outcome(
+                    c,
+                    Role::Curator,
+                    RUN,
+                    &success(Some(json!({ "proposals": [] }))),
+                )
+            })
+            .unwrap();
+        assert_eq!(by_role, Ok(()));
     }
 }

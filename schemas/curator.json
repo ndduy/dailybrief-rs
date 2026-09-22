@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "notes": {
+      "description": "Optional note for the human reader (≤ 500 chars)",
+      "maxLength": 500,
+      "type": "string"
+    },
+    "proposals": {
+      "description": "Every proposal id propose_change returned this run, in order",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "runId": {
+      "default": "",
+      "description": "The run id, when known (may be empty)",
+      "type": "string"
+    }
+  },
+  "required": [
+    "proposals"
+  ],
+  "title": "CuratorOutput",
+  "type": "object"
+}

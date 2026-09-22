@@ -37,7 +37,7 @@ pub fn schema() -> serde_json::Value {
 }
 
 /// `"type": ["string", "null"]` → `"type": "string"` on every property.
-fn strip_null_types(schema: &mut serde_json::Value) {
+pub(crate) fn strip_null_types(schema: &mut serde_json::Value) {
     let Some(props) = schema
         .get_mut("properties")
         .and_then(serde_json::Value::as_object_mut)

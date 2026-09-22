@@ -446,6 +446,8 @@ pub struct Paths {
     pub mcp_template: PathBuf,
     pub editor_prompt: PathBuf,
     pub digest_schema: PathBuf,
+    pub curator_prompt: PathBuf,
+    pub curator_schema: PathBuf,
     pub data_dir: PathBuf,
 }
 
