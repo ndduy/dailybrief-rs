@@ -1242,3 +1242,305 @@ async fn runs_index_shows_the_role_column() {
     assert!(body.contains("<th>Role</th>"), "{body}");
     assert!(body.contains("<td>curator</td>") && body.contains("<td>editor</td>"));
 }
+
+// ---------- M3 Task 12: /curator ----------
+
+use dailybrief::core::feedback::{self, Evidence, ProposalChange};
+
+fn topic_with_vector(db: &Db, id: &str, axis: usize, weight: f64) {
+    let mut v = vec![0.0f32; dailybrief::core::vector::DIMENSIONS];
+    v[axis] = 1.0;
+    db.with(|c| {
+        repo::upsert_topic(
+            c,
+            &dailybrief::config::Topic {
+                id: id.into(),
+                name: id.to_uppercase(),
+                description: String::new(),
+                weight,
+                origin: dailybrief::config::TopicOrigin::Seed,
+            },
+        )?;
+        repo::set_topic_vector(c, id, &v)
+    })
+    .unwrap();
+}
+
+fn proposal(db: &Db, change: ProposalChange, summary: &str) -> String {
+    db.with(|c| {
+        Ok(feedback::propose(
+            c,
+            None,
+            &change,
+            &Evidence {
+                summary: summary.into(),
+                rating_ids: vec![4, 5],
+                read_count: 3,
+                feed_issue_ids: vec![],
+                notes: "a note".into(),
+            },
+            now(),
+        )
+        .unwrap())
+    })
+    .unwrap()
+}
+
+fn decide_req(id: &str, verdict: &str, same_origin: bool, htmx: bool) -> Request<Body> {
+    let mut b = Request::builder()
+        .method("POST")
+        .uri(format!("/curator/{id}/{verdict}"))
+        .header("host", "dailybrief.example");
+    b = if same_origin {
+        b.header("sec-fetch-site", "same-origin")
+    } else {
+        b.header("origin", "https://evil.example")
+    };
+    if htmx {
+        b = b.header("hx-request", "true");
+    }
+    b.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn curator_page_lists_pending_with_evidence_then_decided() {
+    let db = Db::open_in_memory().unwrap();
+    topic_with_vector(&db, "rust", 0, 1.0);
+    published(&db);
+    let a = proposal(
+        &db,
+        ProposalChange::TopicWeight {
+            topic_id: "rust".into(),
+            weight: 2.0,
+        },
+        "three good_source ratings on Rust",
+    );
+    let b = proposal(
+        &db,
+        ProposalChange::DisableSource {
+            source_id: "src3".into(),
+        },
+        "junk every day",
+    );
+    db.with(|c| Ok(feedback::reject(c, &b, now()).unwrap()))
+        .unwrap();
+    let (status, _, body) = get(db, "/curator").await;
+    assert_eq!(status, StatusCode::OK);
+    let pending_at = body.find("Pending").unwrap();
+    let decided_at = body.find("Decided").unwrap();
+    let a_at = body.find(&format!("p-{a}")).unwrap();
+    let b_at = body.find(&format!("p-{b}")).unwrap();
+    assert!(
+        pending_at < a_at && a_at < decided_at && decided_at < b_at,
+        "pending first, then decided"
+    );
+    assert!(body.contains("Set topic 'rust' weight to 2"), "{body}");
+    assert!(body.contains("three good_source ratings on Rust"));
+    assert!(body.contains("<dt>Ratings</dt><dd>4, 5</dd>"));
+    assert!(body.contains("<dt>Reads</dt><dd>3</dd>"));
+    assert!(body.contains("<dt>Notes</dt><dd>a note</dd>"));
+    assert!(body.contains(&format!("action=\"/curator/{a}/approve\"")));
+    assert!(body.contains(&format!("hx-post=\"/curator/{a}/reject\"")));
+    assert!(
+        !body.contains(&format!("action=\"/curator/{b}/approve\"")),
+        "decided rows have no buttons"
+    );
+    assert!(body.contains("rejected"));
+    assert!(!body.contains("hx-on"));
+    assert!(body.contains("href=\"/runs\""));
+}
+
+#[tokio::test]
+async fn approve_applies_and_reject_discards() {
+    let db = Db::open_in_memory().unwrap();
+    topic_with_vector(&db, "rust", 0, 1.0);
+    published(&db);
+    let a = proposal(
+        &db,
+        ProposalChange::TopicWeight {
+            topic_id: "rust".into(),
+            weight: 2.5,
+        },
+        "s",
+    );
+    let b = proposal(
+        &db,
+        ProposalChange::DisableSource {
+            source_id: "src3".into(),
+        },
+        "s",
+    );
+    let before = db.with(|c| repo::row_counts(c)).unwrap();
+    let (status, headers, _) = send(state(db.clone()), decide_req(&a, "approve", true, true)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["hx-refresh"], "true");
+    let w: f64 = db
+        .with(|c| Ok(repo::get_topic(c, "rust")?.unwrap().weight))
+        .unwrap();
+    assert_eq!(w, 2.5);
+    let row = db.with(|c| repo::get_proposal(c, &a)).unwrap().unwrap();
+    assert_eq!(row.status, "approved");
+    assert!(row.applied_json.unwrap().contains("weightBefore"));
+    assert_eq!(
+        db.with(|c| repo::row_counts(c)).unwrap(),
+        before,
+        "apply changes rows, adds none"
+    );
+    // A second approve is refused and changes nothing.
+    let (status, _, body) = send(state(db.clone()), decide_req(&a, "approve", true, false)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("already approved"));
+    // Reject marks the row; the source stays enabled.
+    let (status, headers, _) = send(state(db.clone()), decide_req(&b, "reject", true, false)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers["location"], "/curator");
+    assert!(
+        db.with(|c| Ok(repo::get_source(c, "src3")?.unwrap().enabled))
+            .unwrap()
+    );
+    assert_eq!(
+        db.with(|c| repo::get_proposal(c, &b))
+            .unwrap()
+            .unwrap()
+            .status,
+        "rejected"
+    );
+    let (status, _, _) = send(
+        state(db.clone()),
+        decide_req("p-missing", "approve", true, false),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // A target that vanished: the proposal stays pending and the page says why.
+    let gone = proposal(
+        &db,
+        ProposalChange::DisableSource {
+            source_id: "src4".into(),
+        },
+        "s",
+    );
+    db.with(|c| repo::set_source_enabled(c, "src4", false))
+        .unwrap();
+    let (status, _, body) =
+        send(state(db.clone()), decide_req(&gone, "approve", true, false)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains("already disabled"), "{body}");
+    assert_eq!(
+        db.with(|c| repo::get_proposal(c, &gone))
+            .unwrap()
+            .unwrap()
+            .status,
+        "pending"
+    );
+    let (_, _, page) = get(db, "/curator").await;
+    assert!(page.contains("approved") && page.contains("rejected"));
+}
+
+#[tokio::test]
+async fn curator_posts_require_same_origin() {
+    let db = Db::open_in_memory().unwrap();
+    topic_with_vector(&db, "rust", 0, 1.0);
+    let a = proposal(
+        &db,
+        ProposalChange::TopicWeight {
+            topic_id: "rust".into(),
+            weight: 2.0,
+        },
+        "s",
+    );
+    for verdict in ["approve", "reject"] {
+        let (status, _, _) = send(state(db.clone()), decide_req(&a, verdict, false, false)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{verdict}");
+    }
+    assert_eq!(
+        db.with(|c| repo::get_proposal(c, &a))
+            .unwrap()
+            .unwrap()
+            .status,
+        "pending"
+    );
+    let w: f64 = db
+        .with(|c| Ok(repo::get_topic(c, "rust")?.unwrap().weight))
+        .unwrap();
+    assert_eq!(w, 1.0);
+}
+
+/// The M3 gate (`spec/m3.md` §9 #4): approving a `topic_weight` proposal that doubles one
+/// topic's weight moves the exploit top-80 by at least 5 ids. Four axis topics; 160 items,
+/// each mostly on one axis with a share on the next, so the doubled topic pulls its items up.
+#[tokio::test]
+async fn approval_moves_the_exploit_top_80() {
+    use dailybrief::core::candidates::{Strategy, list_candidates};
+    let db = Db::open_in_memory().unwrap();
+    for (i, id) in ["t0", "t1", "t2", "t3"].iter().enumerate() {
+        topic_with_vector(&db, id, i, 1.0);
+    }
+    db.with(|c| {
+        repo::upsert_source(
+            c,
+            &Feed {
+                id: "s".into(),
+                url: "https://s.example/rss".into(),
+                title: "S".into(),
+                weight: 1.0,
+                enabled: true,
+            },
+        )?;
+        for i in 0..160usize {
+            let axis = i % 4;
+            let mut v = vec![0.0f32; dailybrief::core::vector::DIMENSIONS];
+            let main = 0.55 + 0.4 * ((i / 4) as f32 / 40.0);
+            v[axis] = main;
+            v[(axis + 1) % 4] = 1.0 - main;
+            repo::insert_item(
+                c,
+                &NewItem {
+                    id: format!("g{i:03}"),
+                    source_id: "s".into(),
+                    url: format!("https://s.example/g{i}"),
+                    canonical_url: format!("https://s.example/g{i}"),
+                    title: format!("Gate item {i}"),
+                    author: None,
+                    published_at: Some("2026-09-16T08:00:00.000Z".into()),
+                    fetched_at: "2026-09-16T09:00:00.000Z".into(),
+                    text: "body".into(),
+                    word_count: 1,
+                    content_hash: format!("gc{i}"),
+                    title_hash: format!("gt{i}"),
+                    vector: Some(v),
+                },
+            )?;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let caps = load_config(&Env::from_lookup(|_| None).unwrap())
+        .unwrap()
+        .caps;
+    let top80 = |db: &Db| -> std::collections::HashSet<String> {
+        db.with(|c| list_candidates(c, &caps, Strategy::Exploit, 80, now()))
+            .unwrap()
+            .into_iter()
+            .map(|c| c.id)
+            .collect()
+    };
+    let before = top80(&db);
+    assert_eq!(before.len(), 80);
+    let id = proposal(
+        &db,
+        ProposalChange::TopicWeight {
+            topic_id: "t2".into(),
+            weight: 2.0,
+        },
+        "doubling t2",
+    );
+    let (status, _, _) = send(state(db.clone()), decide_req(&id, "approve", true, false)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let after = top80(&db);
+    assert_eq!(after.len(), 80);
+    let entered = after.difference(&before).count();
+    assert!(
+        entered >= 5,
+        "only {entered} ids entered the top 80 after doubling t2"
+    );
+}

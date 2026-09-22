@@ -219,12 +219,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `GET /curator`: pending proposals first (kind, payload rendered per kind, evidence as a definition list, the run link), then the last 30 decided; `POST /curator/{id}/approve` and `/reject` (same-origin, Access) call `core::feedback::apply` / `decide`; the page reloads (`HX-Refresh`). Every page header links `/curator`. The gate test: on the seeded fixture, approve a `topic_weight` proposal that doubles one topic's weight and assert the exploit top-80 differs by ≥ 5 ids.
 
 **Acceptance criteria:**
-- [ ] test: `curator_page_lists_pending_with_evidence_then_decided`; `approve_applies_and_reject_discards` (rows checked; a second approve is refused); `curator_posts_require_same_origin`.
-- [ ] test: `approval_moves_the_exploit_top_80` (≥ 5 changed ids); `only_feedback_apply_writes_topics_and_sources` still passes with the new route.
+- [x] test: `curator_page_lists_pending_with_evidence_then_decided`; `approve_applies_and_reject_discards` (rows checked; a second approve is refused); `curator_posts_require_same_origin`.
+- [x] test: `approval_moves_the_exploit_top_80` (≥ 5 changed ids); `only_feedback_apply_writes_topics_and_sources` still passes with the new route.
 
 **Verification:**
-- [ ] `bin/dc cargo test web`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test web`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 11
 **Files likely touched:** `src/web/routes/curator.rs`, `src/web/views/curator.rs`, `src/web/routes/mod.rs`, `src/web/views/mod.rs`, `src/web/views/layout.rs`, `src/web/app.rs`, `tests/it/web.rs`

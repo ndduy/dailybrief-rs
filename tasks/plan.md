@@ -86,7 +86,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [ ] Review with human
 
 ### Phase 5: Approval (`approval-web`)
-- [ ] Task 12: `/curator` page, approve/reject, `apply` as the only writer, day pages ignore curator runs, the top-80 gate test
+- [x] Task 12: `/curator` page, approve/reject, `apply` as the only writer, day pages ignore curator runs, the top-80 gate test
 
 ### Checkpoint E
 - [ ] `bin/check full` green; coverage not below M2

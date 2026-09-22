@@ -54,6 +54,7 @@ pub fn page_with_css(title: &str, extra_css: &str, body: Markup) -> Markup {
 pub fn refresh_button() -> Markup {
     html! {
         div.actions {
+            a href="/curator" { "Curator" }
             a href="/runs" { "Runs" }
             form method="post" action="/run" hx-post="/run" hx-swap="none" {
                 button type="submit" { "Refresh" }
@@ -64,5 +65,5 @@ pub fn refresh_button() -> Markup {
 
 /// The header actions without the Refresh button (a run is already going).
 pub fn runs_link() -> Markup {
-    html! { div.actions { a href="/runs" { "Runs" } } }
+    html! { div.actions { a href="/curator" { "Curator" } a href="/runs" { "Runs" } } }
 }
