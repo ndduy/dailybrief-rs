@@ -56,3 +56,7 @@ with the old image.
 - Ratings and proposals are lost on a schema rollback; nothing else is.
 - The next migration (M5 or later) follows the same shape: one id, one transaction, its own
   documented rollback next to it.
+
+## Rehearsal
+
+2026-09-22 (Checkpoint A): a copy of the live `brief.db` (21 runs) taken in the test container, `dailybrief migrate` applied `0002_feedback`, the rollback SQL above restored the 0001 schema (ledger, objects, `runs.role` all checked, `integrity_check` ok), and a second `migrate` re-applied it cleanly. Scripts: `data/checkpoint-a/{sq.sh,inspect.sql,rollback.sql}` (gitignored; the same SQL is `ROLLBACK_0002`).

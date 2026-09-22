@@ -40,7 +40,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Estimated scope:** Medium
 
 ## Checkpoint A
-- [ ] `bin/check task` green; 0002 applies on a copy of `brief.db` and rolls back; the R0 ledger test still passes
+- [x] `bin/check task` green; 0002 applies on a copy of `brief.db` and rolls back; the R0 ledger test still passes (rehearsed 2026-09-22 on a copy of the live file: 21 runs, integrity ok, apply → rollback → re-apply)
 - [ ] Review with human
 
 ---

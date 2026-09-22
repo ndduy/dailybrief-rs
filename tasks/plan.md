@@ -55,7 +55,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [x] Task 2: `core::feedback` types, repo functions, transactional `apply`, the writer-guard test (ADR 0016)
 
 ### Checkpoint A
-- [ ] `bin/check task` green; 0002 applies on a copy of `brief.db` and rolls back; the R0 ledger test still passes
+- [x] `bin/check task` green; 0002 applies on a copy of `brief.db` and rolls back; the R0 ledger test still passes (rehearsed 2026-09-22 on a copy of the live file: 21 runs, integrity ok, apply → rollback → re-apply)
 - [ ] Review with human
 
 ### Phase 2: Rating UI (`rating-ui`)
