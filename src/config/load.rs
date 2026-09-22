@@ -13,12 +13,14 @@ pub struct Env {
     pub data_dir: Option<PathBuf>,
     pub bind: Option<String>,
     pub run_id: Option<String>,
+    /// `DAILYBRIEF_RUN_ROLE`: `editor` (default when unset) or `curator`; the `mcp` verb reads it.
+    pub run_role: Option<String>,
     pub in_container: bool,
 }
 
 impl Env {
     /// Reads `DAILYBRIEF_CONFIG`, `DAILYBRIEF_DATA_DIR`, `DAILYBRIEF_BIND`, `DAILYBRIEF_RUN_ID`,
-    /// `DAILYBRIEF_IN_CONTAINER` from the process environment.
+    /// `DAILYBRIEF_RUN_ROLE`, `DAILYBRIEF_IN_CONTAINER` from the process environment.
     pub fn from_process() -> Result<Self, ConfigError> {
         Self::from_lookup(|name| std::env::var(name).ok())
     }
@@ -44,6 +46,7 @@ impl Env {
             data_dir: non_empty("DAILYBRIEF_DATA_DIR")?.map(PathBuf::from),
             bind: non_empty("DAILYBRIEF_BIND")?,
             run_id: non_empty("DAILYBRIEF_RUN_ID")?,
+            run_role: non_empty("DAILYBRIEF_RUN_ROLE")?,
             in_container,
         })
     }

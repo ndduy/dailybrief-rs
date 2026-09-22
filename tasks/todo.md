@@ -92,12 +92,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `Role { Editor, Curator }` (`runs.role`, `DAILYBRIEF_RUN_ROLE` env in the rendered `mcp.json`, read by the `mcp` verb; missing means editor). The server holds a `ToolRouter` composed for its role: editor = the nine R0 tools; curator = `get_feedback`, `get_profile`, `find_feeds`, `validate_feed`, `propose_change` (stubs that return a typed "not implemented" until Tasks 6–8). Spike first: two `#[tool_router(router = …)]` impls combined; fallback per the plan's risk table.
 
 **Acceptance criteria:**
-- [ ] test: `editor_listing_is_unchanged` (the R0 `tools_list` snapshot passes as is); `curator_listing_names_exactly_the_five_tools` (snapshot `tools_list_curator`); `an_editor_server_has_no_propose_change` (call → unknown tool).
-- [ ] test: `mcp_json_carries_the_role` (rendered template); `mcp_verb_defaults_to_editor_without_the_env`.
+- [x] test: `editor_listing_is_unchanged` (the R0 `tools_list` snapshot passes as is); `curator_listing_names_exactly_the_five_tools` (snapshot `tools_list_curator`); `an_editor_server_has_no_propose_change` (call → unknown tool).
+- [x] test: `mcp_json_carries_the_role` (rendered template); `mcp_verb_defaults_to_editor_without_the_env`.
 
 **Verification:**
-- [ ] `bin/dc cargo test mcp`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test mcp`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 2
 **Files likely touched:** `src/mcp/server.rs`, `src/mcp/tools/mod.rs`, `src/commands/mcp.rs`, `src/config/load.rs`, `config/mcp.json`, `src/editor/mcp_config.rs`, `tests/it/mcp.rs`

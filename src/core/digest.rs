@@ -220,6 +220,7 @@ mod tests {
                 &repo::NewRun {
                     id: RUN.into(),
                     kind: repo::RunKind::Manual,
+                    role: repo::Role::Editor,
                     harness: "test".into(),
                     attempt: 1,
                     started_at: RECENT.into(),

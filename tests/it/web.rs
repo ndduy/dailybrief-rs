@@ -7,7 +7,8 @@ use dailybrief::config::{Env, Feed, load_config};
 use dailybrief::core::time::parse_tz;
 use dailybrief::db::Db;
 use dailybrief::db::repo::{
-    self, DigestInsert, DigestItemInsert, NewItem, NewRun, RunFinish, RunKind, RunStatus, Section,
+    self, DigestInsert, DigestItemInsert, NewItem, NewRun, Role, RunFinish, RunKind, RunStatus,
+    Section,
 };
 use dailybrief::web::app::{AppState, router};
 use http_body_util::BodyExt;
@@ -47,6 +48,7 @@ fn run_row(db: &Db, id: &str, status: RunStatus, error: Option<&str>) {
             &NewRun {
                 id: id.into(),
                 kind: RunKind::Scheduled,
+                role: Role::Editor,
                 harness: "claude-code".into(),
                 attempt: 1,
                 started_at: "2026-09-16T23:30:00.000Z".into(),
@@ -350,6 +352,7 @@ async fn transcript_streams_file_and_unknown_is_404() {
             &NewRun {
                 id: "2026-09-17-t1".into(),
                 kind: RunKind::Manual,
+                role: Role::Editor,
                 harness: "claude-code".into(),
                 attempt: 1,
                 started_at: "2026-09-16T23:30:00.000Z".into(),
@@ -361,6 +364,7 @@ async fn transcript_streams_file_and_unknown_is_404() {
             &NewRun {
                 id: "2026-09-17-gone".into(),
                 kind: RunKind::Manual,
+                role: Role::Editor,
                 harness: "claude-code".into(),
                 attempt: 1,
                 started_at: "2026-09-16T23:31:00.000Z".into(),
@@ -453,6 +457,7 @@ async fn post_run_429_after_cap() {
                 &NewRun {
                     id: format!("2026-09-17-m{i}"),
                     kind: RunKind::Manual,
+                    role: Role::Editor,
                     harness: "claude-code".into(),
                     attempt: 1,
                     started_at: "2026-09-16T23:30:00.000Z".into(),
@@ -517,6 +522,7 @@ async fn runs_index_lists_newest_first_with_log_links() {
             &NewRun {
                 id: "2026-09-17-new1".into(),
                 kind: RunKind::Manual,
+                role: Role::Editor,
                 harness: "claude-code".into(),
                 attempt: 1,
                 started_at: "2026-09-17T01:00:00.000Z".into(),
@@ -548,6 +554,7 @@ async fn run_log_renders_events_in_order_reloads_while_running_and_unknown_is_40
             &NewRun {
                 id: "2026-09-17-live".into(),
                 kind: RunKind::Manual,
+                role: Role::Editor,
                 harness: "claude-code".into(),
                 attempt: 1,
                 started_at: "2026-09-17T01:00:00.000Z".into(),
@@ -786,6 +793,7 @@ async fn retry_chain_for_a_run_outside_the_recent_rows() {
                 &NewRun {
                     id: id.into(),
                     kind: RunKind::Scheduled,
+                    role: Role::Editor,
                     harness: "claude-code".into(),
                     attempt,
                     started_at: started.into(),
@@ -945,6 +953,7 @@ async fn manual_run_cap_counts_runs_not_attempts() {
                 &NewRun {
                     id: id.into(),
                     kind: RunKind::Manual,
+                    role: Role::Editor,
                     harness: "claude-code".into(),
                     attempt,
                     started_at: "2026-09-16T23:30:00.000Z".into(),

@@ -148,7 +148,7 @@ fn event_type_strings_are_unchanged() {
 // ---------- Task 2: folding ----------
 
 use dailybrief::config::{Caps, ClaudeCodeSettings};
-use dailybrief::db::repo::{RunEvent, RunRow, RunStatus};
+use dailybrief::db::repo::{Role, RunEvent, RunRow, RunStatus};
 use dailybrief::harness::trajectory::{caps_used, fold_turns, retry_chain};
 
 fn events(lines: &[String]) -> Vec<RunEvent> {
@@ -338,6 +338,7 @@ fn row(id: &str, kind: &str, attempt: i64, started: &str, status: RunStatus) -> 
     RunRow {
         id: id.into(),
         kind: kind.into(),
+        role: Role::Editor,
         harness: "claude-code".into(),
         status,
         attempt,

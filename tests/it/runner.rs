@@ -212,6 +212,10 @@ async fn runner_writes_transcript_and_run_events_in_order() {
         mcp["mcpServers"]["dailybrief"]["env"]["DAILYBRIEF_RUN_ID"],
         id.as_str()
     );
+    assert_eq!(
+        mcp["mcpServers"]["dailybrief"]["env"]["DAILYBRIEF_RUN_ROLE"],
+        "editor"
+    );
     assert!(!dir.join("CLAUDE.md").exists());
 }
 
@@ -306,6 +310,7 @@ async fn two_db_handles_write_one_file_concurrently() {
                 &repo::NewRun {
                     id: id.into(),
                     kind: RunKind::Manual,
+                    role: repo::Role::Editor,
                     harness: "t".into(),
                     attempt: 1,
                     started_at: "2026-09-17T06:00:00.000Z".into(),

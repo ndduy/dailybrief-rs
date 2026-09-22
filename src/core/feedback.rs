@@ -670,6 +670,7 @@ mod tests {
                 &repo::NewRun {
                     id: "run-x".into(),
                     kind: repo::RunKind::Manual,
+                    role: repo::Role::Editor,
                     harness: "fake".into(),
                     attempt: 1,
                     started_at: to_iso(now()),

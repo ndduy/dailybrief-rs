@@ -40,7 +40,7 @@ pub fn verify_digest_outcome(
 mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::db::repo::{DigestInsert, NewRun, RunKind};
+    use crate::db::repo::{DigestInsert, NewRun, Role, RunKind};
     use crate::harness::claude_code::ResultEvent;
     use crate::harness::types::FailReason;
     use serde_json::json;
@@ -74,6 +74,7 @@ mod tests {
                 &NewRun {
                     id: RUN.into(),
                     kind: RunKind::Manual,
+                    role: Role::Editor,
                     harness: "test".into(),
                     attempt: 1,
                     started_at: "2026-09-17T06:00:00.000Z".into(),

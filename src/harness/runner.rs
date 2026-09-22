@@ -16,7 +16,7 @@ use crate::config::Config;
 use chrono_tz::Tz;
 
 use crate::core::time::{date_in_zone, days_ago_iso, to_iso};
-use crate::db::repo::{self, LockResult, NewRun, RunFinish, RunKind, RunStatus};
+use crate::db::repo::{self, LockResult, NewRun, Role, RunFinish, RunKind, RunStatus};
 use crate::db::{Db, DbError};
 use crate::editor::mcp_config::{McpConfigError, McpConfigVars, render};
 
@@ -173,6 +173,7 @@ impl Runner {
                 command: &command,
                 args: &self.config.harness.mcp_args,
                 run_id: &run_id,
+                role: Role::Editor.as_str(),
                 config_path: &self.config.paths.config,
                 data_dir: &self.config.paths.data_dir,
             },
@@ -183,6 +184,7 @@ impl Runner {
             let row = NewRun {
                 id: run_id.clone(),
                 kind,
+                role: Role::Editor,
                 harness: self.harness.name().to_string(),
                 attempt: i64::from(attempt_no),
                 started_at: to_iso(started),

@@ -1,0 +1,122 @@
+---
+source: tests/it/mcp.rs
+expression: listing_of(&tools)
+---
+[
+  {
+    "description": "Discover the RSS/Atom feeds a web page advertises. Returns url, title and type per feed.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "url": {
+          "description": "An absolute http(s) URL.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "name": "find_feeds"
+  },
+  {
+    "description": "The week's evidence in one call: ratings with reasons, reads, the explore hit rate and\nthe feed issues, over the window since the last Curator run. Call this first.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "get_feedback"
+  },
+  {
+    "description": "The current profile: topics (id, name, weight, origin, saturation, last positive) and\nsources (id, title, url, weight, enabled, failures, last ok).",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "get_profile"
+  },
+  {
+    "description": "Propose one change to the profile with its evidence. Nothing changes until the reader\napproves it on the web; the answer is the proposal id or a typed rejection to fix.",
+    "inputSchema": {
+      "$defs": {
+        "Evidence": {
+          "description": "Why the Curator proposes it: fixed fields the page renders as a list, plus a short note.",
+          "properties": {
+            "feedIssueIds": {
+              "default": [],
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "notes": {
+              "default": "",
+              "type": "string"
+            },
+            "ratingIds": {
+              "default": [],
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "readCount": {
+              "default": 0,
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/Evidence",
+          "description": "Why: a one-paragraph summary, the rating ids, the read count, the feed issue ids, notes."
+        },
+        "kind": {
+          "description": "One of: topic_weight, add_topic, disable_source, add_source, promote_explore_topic.",
+          "type": "string"
+        },
+        "payload": {
+          "description": "The payload for that kind (see the prompt for the fields and bounds)."
+        }
+      },
+      "required": [
+        "kind",
+        "payload",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "name": "propose_change"
+  },
+  {
+    "description": "Fetch and parse one feed URL: ok, title, items per day, last item date, or the error.\nValidate before you propose add_source.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "url": {
+          "description": "An absolute http(s) URL.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "name": "validate_feed"
+  }
+]

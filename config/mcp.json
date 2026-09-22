@@ -6,6 +6,7 @@
       "args": "${MCP_ARGS}",
       "env": {
         "DAILYBRIEF_RUN_ID": "${RUN_ID}",
+        "DAILYBRIEF_RUN_ROLE": "${RUN_ROLE}",
         "DAILYBRIEF_CONFIG": "${CONFIG_PATH}",
         "DAILYBRIEF_DATA_DIR": "${DATA_DIR}"
       }

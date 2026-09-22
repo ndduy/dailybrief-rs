@@ -88,6 +88,7 @@ fn full_run_in_process() {
             &repo::NewRun {
                 id: RUN.into(),
                 kind: repo::RunKind::Manual,
+                role: repo::Role::Editor,
                 harness: "test".into(),
                 attempt: 1,
                 started_at: "2026-09-17T06:00:00.000Z".into(),

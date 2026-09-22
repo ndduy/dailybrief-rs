@@ -404,7 +404,7 @@ async fn invalid_utf8_line_does_not_end_the_run() {
 async fn scan_transcript_checks_runs_error() {
     use dailybrief::config::Env;
     use dailybrief::db::Db;
-    use dailybrief::db::repo::{self, NewRun, RunFinish, RunKind, RunStatus};
+    use dailybrief::db::repo::{self, NewRun, Role, RunFinish, RunKind, RunStatus};
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path().join("data");
     let run_dir = data.join("runs").join("2026-09-17-leak");
@@ -418,6 +418,7 @@ async fn scan_transcript_checks_runs_error() {
             &NewRun {
                 id: "2026-09-17-leak".into(),
                 kind: RunKind::Manual,
+                role: Role::Editor,
                 harness: "claude-code".into(),
                 attempt: 1,
                 started_at: "2026-09-16T23:30:00.000Z".into(),

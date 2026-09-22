@@ -164,7 +164,7 @@ pub async fn prune(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::repo::{NewRun, RunFinish, RunKind, RunStatus};
+    use crate::db::repo::{NewRun, Role, RunFinish, RunKind, RunStatus};
     use chrono::TimeZone;
 
     fn now() -> DateTime<Utc> {
@@ -186,6 +186,7 @@ mod tests {
                 &NewRun {
                     id: id.into(),
                     kind: RunKind::Scheduled,
+                    role: Role::Editor,
                     harness: "claude-code".into(),
                     attempt: 1,
                     started_at: started.clone(),

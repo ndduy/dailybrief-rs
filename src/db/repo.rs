@@ -398,10 +398,36 @@ impl RunKind {
     }
 }
 
+/// Who the run is for (`runs.role`, migration 0002): the Editor builds a digest, the Curator
+/// writes proposals. It selects the tool set the MCP server exposes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    Editor,
+    Curator,
+}
+
+impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Editor => "editor",
+            Self::Curator => "curator",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "editor" => Some(Self::Editor),
+            "curator" => Some(Self::Curator),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewRun {
     pub id: String,
     pub kind: RunKind,
+    pub role: Role,
     pub harness: String,
     pub attempt: i64,
     pub started_at: String,
@@ -411,11 +437,12 @@ pub struct NewRun {
 /// Inserts a run in the `running` state.
 pub fn insert_run(conn: &Connection, run: &NewRun) -> Result<(), DbError> {
     conn.execute(
-        "INSERT INTO runs (id, kind, harness, status, attempt, started_at, transcript_path)
-         VALUES (?1, ?2, ?3, 'running', ?4, ?5, ?6)",
+        "INSERT INTO runs (id, kind, role, harness, status, attempt, started_at, transcript_path)
+         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7)",
         params![
             run.id,
             run.kind.as_str(),
+            run.role.as_str(),
             run.harness,
             run.attempt,
             run.started_at,
@@ -888,6 +915,7 @@ impl RunStatus {
 pub struct RunRow {
     pub id: String,
     pub kind: String,
+    pub role: Role,
     pub harness: String,
     pub status: RunStatus,
     pub attempt: i64,
@@ -901,8 +929,8 @@ pub struct RunRow {
     pub transcript_path: Option<String>,
 }
 
-const RUN_COLS: &str = "id, kind, harness, status, attempt, started_at, ended_at, turns, usage_json, \
-                        cost_usd, session_id, error, transcript_path";
+const RUN_COLS: &str = "id, kind, role, harness, status, attempt, started_at, ended_at, turns, \
+                        usage_json, cost_usd, session_id, error, transcript_path";
 
 fn map_run(row: &Row<'_>) -> rusqlite::Result<RunRow> {
     let status: String = row.get("status")?;
@@ -913,9 +941,18 @@ fn map_run(row: &Row<'_>) -> rusqlite::Result<RunRow> {
             format!("unknown run status '{status}'").into(),
         )
     })?;
+    let role: String = row.get("role")?;
+    let role = Role::parse(&role).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            format!("unknown run role '{role}'").into(),
+        )
+    })?;
     Ok(RunRow {
         id: row.get("id")?,
         kind: row.get("kind")?,
+        role,
         harness: row.get("harness")?,
         status,
         attempt: row.get("attempt")?,

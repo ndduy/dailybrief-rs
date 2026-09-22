@@ -23,6 +23,8 @@ pub enum ToolError {
     NotesMissing,
     #[error("The tool failed internally; try once more, then move on.")]
     Internal(String),
+    #[error("{0} is not available in this build yet.")]
+    NotImplemented(&'static str),
 }
 
 impl From<DbError> for ToolError {

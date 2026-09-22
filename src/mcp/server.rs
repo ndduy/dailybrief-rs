@@ -1,12 +1,17 @@
 //! The MCP server the harness spawns (`dailybrief mcp`). Tools are thin wrappers over `core`
-//! functions; this file owns the router, the per-run state, and the guard that turns every
+//! functions; this file owns the routers, the per-run state, and the guard that turns every
 //! failure (including a panic) into an `isError` result.
+//!
+//! One server type, two tool sets: the Editor's nine tools and the Curator's five live in two
+//! `#[tool_router]` impls, and the server holds the router for its [`Role`] (`with_role`). An
+//! Editor run therefore cannot even see `propose_change`.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU8;
 
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
+use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
@@ -16,6 +21,7 @@ use crate::config::{Config, Feed};
 use crate::core::embed::Embedder;
 use crate::core::http::Http;
 use crate::db::Db;
+use crate::db::repo::Role;
 
 use super::error::ToolError;
 use super::tools;
@@ -37,6 +43,9 @@ pub struct DailyBriefServer {
     /// The first `fetch_sources` report; the lock is held across the ingest, so a concurrent
     /// second call waits and gets the same report instead of fetching again.
     pub fetch_report: Arc<tokio::sync::Mutex<Option<Value>>>,
+    pub role: Role,
+    /// The tool set for `role`; `list_tools` and `call_tool` go through it and nothing else.
+    tool_router: Arc<ToolRouter<Self>>,
 }
 
 impl DailyBriefServer {
@@ -59,7 +68,31 @@ impl DailyBriefServer {
             now,
             publish_rejections: Arc::new(AtomicU8::new(0)),
             fetch_report: Arc::new(tokio::sync::Mutex::new(None)),
+            role: Role::Editor,
+            tool_router: Arc::new(Self::editor_router()),
         }
+    }
+
+    /// Swaps in the tool set for `role` (the constructor gives the Editor's).
+    pub fn with_role(mut self, role: Role) -> Self {
+        self.role = role;
+        self.tool_router = Arc::new(match role {
+            Role::Editor => Self::editor_router(),
+            Role::Curator => Self::curator_router(),
+        });
+        self
+    }
+
+    /// The tool names this server lists, sorted.
+    pub fn tool_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .tool_router
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        names.sort();
+        names
     }
 }
 
@@ -75,7 +108,7 @@ where
     }
 }
 
-#[tool_router]
+#[tool_router(router = editor_router)]
 impl DailyBriefServer {
     /// Fetch today's dynamic context in one call: the date, your topic profile (names and weights),
     /// the item ids shown in the last 14 days, feed health, your notes, and every cap. Call this first.
@@ -161,7 +194,53 @@ impl DailyBriefServer {
     }
 }
 
-#[tool_handler]
+#[tool_router(router = curator_router)]
+impl DailyBriefServer {
+    /// The week's evidence in one call: ratings with reasons, reads, the explore hit rate and
+    /// the feed issues, over the window since the last Curator run. Call this first.
+    #[tool]
+    async fn get_feedback(&self) -> CallToolResult {
+        guarded(tools::curator::get_feedback(self)).await
+    }
+
+    /// The current profile: topics (id, name, weight, origin, saturation, last positive) and
+    /// sources (id, title, url, weight, enabled, failures, last ok).
+    #[tool]
+    async fn get_profile(&self) -> CallToolResult {
+        guarded(tools::curator::get_profile(self)).await
+    }
+
+    /// Discover the RSS/Atom feeds a web page advertises. Returns url, title and type per feed.
+    #[tool]
+    async fn find_feeds(
+        &self,
+        Parameters(input): Parameters<tools::curator::UrlInput>,
+    ) -> CallToolResult {
+        guarded(tools::curator::find_feeds(self, input)).await
+    }
+
+    /// Fetch and parse one feed URL: ok, title, items per day, last item date, or the error.
+    /// Validate before you propose add_source.
+    #[tool]
+    async fn validate_feed(
+        &self,
+        Parameters(input): Parameters<tools::curator::UrlInput>,
+    ) -> CallToolResult {
+        guarded(tools::curator::validate_feed(self, input)).await
+    }
+
+    /// Propose one change to the profile with its evidence. Nothing changes until the reader
+    /// approves it on the web; the answer is the proposal id or a typed rejection to fix.
+    #[tool]
+    async fn propose_change(
+        &self,
+        Parameters(input): Parameters<tools::curator::ProposeChangeInput>,
+    ) -> CallToolResult {
+        guarded(tools::curator::propose_change(self, input)).await
+    }
+}
+
+#[tool_handler(router = self.tool_router)]
 impl ServerHandler for DailyBriefServer {
     fn get_info(&self) -> rmcp::model::ServerConfig {
         let mut info = rmcp::model::ServerConfig::new(
@@ -170,8 +249,13 @@ impl ServerHandler for DailyBriefServer {
                 .build(),
         );
         info.server_info = rmcp::model::Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION"));
-        info.instructions =
-            Some("Tools for building the daily digest. Start with get_briefing.".into());
+        info.instructions = Some(
+            match self.role {
+                Role::Editor => "Tools for building the daily digest. Start with get_briefing.",
+                Role::Curator => "Tools for curating the reading profile. Start with get_feedback.",
+            }
+            .into(),
+        );
         info
     }
 }
@@ -303,6 +387,43 @@ mod tests {
         );
         let text = r.content[0].as_text().expect("text content");
         assert!(text.text.contains("failed internally"));
+    }
+
+    #[tokio::test]
+    async fn an_editor_server_has_no_propose_change() {
+        let h = Harness::start(server_with(Db::open_in_memory().unwrap())).await;
+        let mut params = rmcp::model::CallToolRequestParams::new("propose_change".to_string());
+        params.arguments = None;
+        let err = h.client.call_tool(params).await.unwrap_err();
+        assert!(err.to_string().contains("tool not found"), "{err}");
+        assert!(!h.tool_names().await.contains(&"propose_change".to_string()));
+    }
+
+    #[tokio::test]
+    async fn a_curator_server_lists_the_five_tools_and_none_of_the_editors() {
+        let server = server_with(Db::open_in_memory().unwrap()).with_role(Role::Curator);
+        assert_eq!(server.role, Role::Curator);
+        assert_eq!(server.tool_names().len(), 5);
+        let h = Harness::start(server).await;
+        assert_eq!(
+            h.tool_names().await,
+            vec![
+                "find_feeds",
+                "get_feedback",
+                "get_profile",
+                "propose_change",
+                "validate_feed"
+            ]
+        );
+        let info = h.client.peer_info().unwrap();
+        assert!(
+            info.instructions
+                .as_deref()
+                .unwrap()
+                .contains("get_feedback")
+        );
+        let r = h.call("get_profile", json!({})).await;
+        assert_eq!(r.is_error, Some(true), "a stub until Task 6");
     }
 
     #[tokio::test]

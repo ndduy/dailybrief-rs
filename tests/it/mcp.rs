@@ -8,7 +8,7 @@ use dailybrief::config::{Env, Feed, Topic, TopicOrigin, load_all};
 use dailybrief::core::embed::{Embedder, FakeEmbedder};
 use dailybrief::core::http::client;
 use dailybrief::db::Db;
-use dailybrief::db::repo::{self, NewItem};
+use dailybrief::db::repo::{self, NewItem, Role};
 use dailybrief::mcp::server::DailyBriefServer;
 use rmcp::ServiceExt;
 use rmcp::model::{CallToolRequestParams, CallToolResult, JsonObject};
@@ -30,6 +30,10 @@ struct Rig {
 
 impl Rig {
     async fn start(db: Db) -> Self {
+        Self::start_as(db, Role::Editor).await
+    }
+
+    async fn start_as(db: Db, role: Role) -> Self {
         let loaded = load_all(&Env::from_lookup(|_| None).unwrap()).unwrap();
         let server = DailyBriefServer::new(
             db.clone(),
@@ -39,7 +43,8 @@ impl Rig {
             Arc::new(FakeEmbedder),
             client(&loaded.config.ingest).unwrap(),
             now,
-        );
+        )
+        .with_role(role);
         let (client_side, server_side) = tokio::io::duplex(1 << 16);
         let (sr, sw) = tokio::io::split(server_side);
         let (cr, cw) = tokio::io::split(client_side);
@@ -141,6 +146,7 @@ fn seeded() -> Db {
             &repo::NewRun {
                 id: RUN.into(),
                 kind: repo::RunKind::Manual,
+                role: repo::Role::Editor,
                 harness: "test".into(),
                 attempt: 1,
                 started_at: "2026-09-17T06:00:00.000Z".into(),
@@ -166,6 +172,55 @@ fn select_args(id: &str, section: &str, topic: &str, reason: Option<&str>) -> Va
     v
 }
 
+fn listing_of(tools: &[rmcp::model::Tool]) -> Vec<Value> {
+    tools
+        .iter()
+        .map(|t| {
+            json!({
+                "name": t.name,
+                "description": t.description,
+                "inputSchema": t.input_schema,
+            })
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn curator_listing_names_exactly_the_five_tools() {
+    let rig = Rig::start_as(seeded(), Role::Curator).await;
+    let mut tools = rig.client.list_all_tools().await.unwrap();
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
+    let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+    assert_eq!(
+        names,
+        vec![
+            "find_feeds",
+            "get_feedback",
+            "get_profile",
+            "propose_change",
+            "validate_feed"
+        ]
+    );
+    insta::assert_json_snapshot!("tools_list_curator", listing_of(&tools));
+    // The Editor's tools are not merely hidden: a call is an unknown tool.
+    let mut params = CallToolRequestParams::new("publish_digest".to_string());
+    params.arguments = None;
+    assert!(rig.client.call_tool(params).await.is_err());
+}
+
+#[tokio::test]
+async fn an_editor_server_has_no_propose_change() {
+    let rig = Rig::start(seeded()).await;
+    let mut params = CallToolRequestParams::new("propose_change".to_string());
+    params.arguments = json!({"kind": "topic_weight", "payload": {}, "evidence": {"summary": "x"}})
+        .as_object()
+        .cloned();
+    let err = rig.client.call_tool(params).await.unwrap_err();
+    assert!(err.to_string().contains("tool not found"), "{err}");
+}
+
+/// The R0 listing, byte for byte (`editor_listing_is_unchanged`): the Curator's tools change
+/// nothing the Editor sees.
 #[tokio::test]
 async fn tools_list_snapshot() {
     let rig = Rig::start(seeded()).await;

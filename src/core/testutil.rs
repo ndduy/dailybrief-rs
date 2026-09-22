@@ -53,6 +53,7 @@ pub fn shown(conn: &Connection, item_id: &str, published_at: &str) -> Result<(),
         &repo::NewRun {
             id: run_id.clone(),
             kind: repo::RunKind::Manual,
+            role: repo::Role::Editor,
             harness: "test".into(),
             attempt: 1,
             started_at: published_at.to_string(),

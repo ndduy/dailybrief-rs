@@ -1,5 +1,6 @@
 //! Renders the per-run `mcp.json` from the committed template (`SPEC.md` §3): `${MCP_COMMAND}` is
-//! this binary, `${MCP_ARGS}` the JSON array of args, plus the run id, config path and data dir.
+//! this binary, `${MCP_ARGS}` the JSON array of args, plus the run id, its role, config path and
+//! data dir.
 
 use std::path::Path;
 
@@ -15,6 +16,8 @@ pub struct McpConfigVars<'a> {
     pub command: &'a Path,
     pub args: &'a [String],
     pub run_id: &'a str,
+    /// `editor` or `curator` (`DAILYBRIEF_RUN_ROLE` for the `mcp` verb).
+    pub role: &'a str,
     pub config_path: &'a Path,
     pub data_dir: &'a Path,
 }
@@ -29,6 +32,7 @@ pub fn render(template: &str, vars: &McpConfigVars<'_>) -> Result<String, McpCon
             &json_escape(&vars.command.to_string_lossy()),
         )
         .replace("${RUN_ID}", &json_escape(vars.run_id))
+        .replace("${RUN_ROLE}", &json_escape(vars.role))
         .replace(
             "${CONFIG_PATH}",
             &json_escape(&vars.config_path.to_string_lossy()),
@@ -76,6 +80,7 @@ mod tests {
             command: cmd,
             args,
             run_id: "2026-09-17-abcd1234",
+            role: "editor",
             config_path: cfg,
             data_dir: data,
         }
@@ -94,6 +99,7 @@ mod tests {
         assert_eq!(server["command"], "/usr/local/bin/dailybrief");
         assert_eq!(server["args"], serde_json::json!(["mcp"]));
         assert_eq!(server["env"]["DAILYBRIEF_RUN_ID"], "2026-09-17-abcd1234");
+        assert_eq!(server["env"]["DAILYBRIEF_RUN_ROLE"], "editor");
         assert_eq!(
             server["env"]["DAILYBRIEF_CONFIG"],
             "/app/config/config.toml"
@@ -101,6 +107,22 @@ mod tests {
         assert_eq!(server["env"]["DAILYBRIEF_DATA_DIR"], "/data");
         assert!(!out.contains("${"));
         assert!(out.ends_with('\n'));
+    }
+
+    #[test]
+    fn mcp_json_carries_the_role() {
+        let cmd = PathBuf::from("/usr/local/bin/dailybrief");
+        let args = vec!["mcp".to_string()];
+        let cfg = PathBuf::from("c.toml");
+        let data = PathBuf::from("d");
+        let mut v = vars(&cmd, &args, &cfg, &data);
+        v.role = "curator";
+        let out = render(TEMPLATE, &v).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            v["mcpServers"]["dailybrief"]["env"]["DAILYBRIEF_RUN_ROLE"],
+            "curator"
+        );
     }
 
     #[test]
