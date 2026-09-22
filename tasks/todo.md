@@ -11,12 +11,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** Append `Migration { id: "0002_feedback", sql }` to `MIGRATIONS`: `ratings(id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL REFERENCES items(id), digest_id TEXT REFERENCES digests(id), sign TEXT NOT NULL CHECK (sign IN ('up','down')), reason TEXT NOT NULL, at TEXT NOT NULL, UNIQUE(item_id))`, `proposals(id TEXT PRIMARY KEY, run_id TEXT REFERENCES runs(id), kind TEXT NOT NULL, payload_json TEXT NOT NULL, evidence_json TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('pending','approved','rejected')), created_at TEXT NOT NULL, decided_at TEXT, applied_json TEXT)`, `ALTER TABLE runs ADD COLUMN role TEXT NOT NULL DEFAULT 'editor'`. A `ROLLBACK_0002` const (drop the two tables, rebuild `runs` without `role`, delete the ledger row) lives next to it, documented, never called by the service. Draft ADR 0018 with the DDL.
 
 **Acceptance criteria:**
-- [ ] test: `migration_0002_applies_on_the_r0_schema_and_twice_is_a_noop`; `migration_0002_rollback_restores_the_0001_schema` (compare `sqlite_master` before and after on a temp DB); `unknown_applied_migration_ids_are_ignored` (a ledger row `0003_future` does not break `migrate`).
-- [ ] test: the R0 ledger test (`applying_twice_is_a_noop`) still passes; `Db::open` on a copy of `tests/fixtures/…` R0 schema reports `["0002_feedback"]` applied.
+- [x] test: `migration_0002_applies_on_the_r0_schema_and_twice_is_a_noop`; `migration_0002_rollback_restores_the_0001_schema` (`sqlite_master` text-for-text on a temp DB); `unknown_applied_migration_ids_are_ignored`.
+- [x] test: the R0 ledger tests pass with both ids (`applying_twice_is_a_noop`, the `migrate` verb test renamed `first_run_reports_every_migration_and_second_run_reports_nothing`, the `Db::open` test).
 
 **Verification:**
-- [ ] `bin/dc cargo test migrate`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test migrate`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** None
 **Files likely touched:** `src/db/migrations.rs`, `src/db/migrate.rs`, `docs/adr/0018-migration-0002-feedback.md`

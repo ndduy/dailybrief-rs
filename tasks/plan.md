@@ -51,7 +51,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 ## Task list
 
 ### Phase 1: Feedback DB (`feedback-db`)
-- [ ] Task 1: Migration `0002_feedback` (ratings, proposals, `runs.role`) with rollback SQL and tests (ADR 0018)
+- [x] Task 1: Migration `0002_feedback` (ratings, proposals, `runs.role`) with rollback SQL and tests (ADR 0018)
 - [ ] Task 2: `core::feedback` types, repo functions, transactional `apply`, the writer-guard test (ADR 0016)
 
 ### Checkpoint A

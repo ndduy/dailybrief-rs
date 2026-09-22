@@ -161,7 +161,7 @@ mod tests {
             .call(|conn| Ok(conn.query_row("SELECT count(*) FROM migrations", [], |r| r.get(0))?))
             .await
             .unwrap();
-        assert_eq!(n, 1);
+        assert_eq!(n, 2, "0001_init and 0002_feedback");
     }
 
     #[tokio::test]

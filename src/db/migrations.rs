@@ -8,11 +8,60 @@ pub struct Migration {
     pub sql: &'static str,
 }
 
-/// Every migration, in the order they apply. The live database already holds `0001_init`.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    id: "0001_init",
-    sql: INIT_0001,
-}];
+/// Every migration, in the order they apply. The live database already holds `0001_init`;
+/// `0002_feedback` is applied by the M3 deploy (ADR 0018).
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        id: "0001_init",
+        sql: INIT_0001,
+    },
+    Migration {
+        id: "0002_feedback",
+        sql: FEEDBACK_0002,
+    },
+];
+
+/// M3 (`spec/m3.md`, ADR 0018): ratings are the reader's evidence and change nothing else;
+/// proposals are the only way an agent changes the profile; `runs.role` tells an Editor run
+/// from a Curator run without touching the `kind` CHECK.
+const FEEDBACK_0002: &str = r#"
+CREATE TABLE ratings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id TEXT NOT NULL REFERENCES items(id),
+  digest_id TEXT REFERENCES digests(id),
+  sign TEXT NOT NULL CHECK (sign IN ('up', 'down')),
+  reason TEXT NOT NULL,
+  at TEXT NOT NULL,
+  UNIQUE (item_id)
+);
+
+CREATE TABLE proposals (
+  id TEXT PRIMARY KEY,
+  run_id TEXT REFERENCES runs(id),
+  kind TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  evidence_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+  created_at TEXT NOT NULL,
+  decided_at TEXT,
+  applied_json TEXT
+);
+
+CREATE INDEX proposals_status_created ON proposals (status, created_at);
+
+ALTER TABLE runs ADD COLUMN role TEXT NOT NULL DEFAULT 'editor';
+"#;
+
+/// The documented way back from `0002_feedback` (ADR 0018). Never run by the service: an
+/// operator runs it on a copy first, then on the live file, after `docker compose down`.
+/// Ratings and proposals are lost; every 0001 table is untouched.
+pub const ROLLBACK_0002: &str = r#"
+DROP INDEX IF EXISTS proposals_status_created;
+DROP TABLE IF EXISTS proposals;
+DROP TABLE IF EXISTS ratings;
+ALTER TABLE runs DROP COLUMN role;
+DELETE FROM migrations WHERE id = '0002_feedback';
+"#;
 
 /// `SPEC.md` §5, verbatim.
 const INIT_0001: &str = r#"

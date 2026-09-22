@@ -41,12 +41,15 @@ mod tests {
     }
 
     #[test]
-    fn first_run_reports_0001_and_second_run_reports_nothing() {
+    fn first_run_reports_every_migration_and_second_run_reports_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let env = env_for(dir.path());
         let mut out = Vec::new();
         run(&env, &mut out).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "applied 0001_init\n");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "applied 0001_init\napplied 0002_feedback\n"
+        );
         let mut out = Vec::new();
         run(&env, &mut out).unwrap();
         assert!(out.is_empty());

@@ -67,7 +67,7 @@ mod tests {
     fn applies_0001_on_empty_db() {
         let mut conn = fresh();
         let applied = migrate(&mut conn, Utc::now()).unwrap();
-        assert_eq!(applied, vec!["0001_init"]);
+        assert_eq!(applied, vec!["0001_init", "0002_feedback"]);
         let tables = names(&conn, "table");
         for t in [
             "sources",
@@ -108,8 +108,11 @@ mod tests {
         let rows: i64 = conn
             .query_row("SELECT count(*) FROM migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(rows, 1);
-        assert_eq!(applied_migrations(&conn).unwrap(), vec!["0001_init"]);
+        assert_eq!(rows, 2);
+        assert_eq!(
+            applied_migrations(&conn).unwrap(),
+            vec!["0001_init", "0002_feedback"]
+        );
     }
 
     #[test]
@@ -151,5 +154,98 @@ mod tests {
         );
         assert!(applied_migrations(&conn).unwrap().is_empty());
         assert!(!names(&conn, "table").iter().any(|n| n == "items"));
+    }
+
+    fn schema(conn: &Connection) -> Vec<(String, String)> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT name, sql FROM sqlite_master WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            )
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    fn columns(conn: &Connection, table: &str) -> Vec<String> {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn migration_0002_applies_on_the_r0_schema_and_twice_is_a_noop() {
+        let mut conn = fresh();
+        // The R0 database: 0001 only.
+        let tx = conn.transaction().unwrap();
+        tx.execute_batch(LEDGER_DDL).unwrap();
+        tx.execute_batch(MIGRATIONS[0].sql).unwrap();
+        tx.execute(
+            "INSERT INTO migrations (id, applied_at) VALUES ('0001_init', '2026-09-17T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        let applied = migrate(&mut conn, Utc::now()).unwrap();
+        assert_eq!(applied, vec!["0002_feedback"]);
+        let tables = names(&conn, "table");
+        assert!(tables.contains(&"ratings".to_string()));
+        assert!(tables.contains(&"proposals".to_string()));
+        assert!(columns(&conn, "runs").contains(&"role".to_string()));
+        let role: String = conn
+            .query_row(
+                "INSERT INTO runs (id, kind, harness, status, started_at) VALUES ('r', 'manual', 'h', 'running', 'now') RETURNING role",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(role, "editor", "existing and new runs default to editor");
+        assert!(migrate(&mut conn, Utc::now()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn migration_0002_rollback_restores_the_0001_schema() {
+        let mut conn = fresh();
+        let tx = conn.transaction().unwrap();
+        tx.execute_batch(LEDGER_DDL).unwrap();
+        tx.execute_batch(MIGRATIONS[0].sql).unwrap();
+        tx.execute(
+            "INSERT INTO migrations (id, applied_at) VALUES ('0001_init', '2026-09-17T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        let before = schema(&conn);
+        migrate(&mut conn, Utc::now()).unwrap();
+        assert_ne!(schema(&conn), before);
+        conn.execute_batch(super::super::migrations::ROLLBACK_0002)
+            .unwrap();
+        assert_eq!(
+            schema(&conn),
+            before,
+            "the 0001 schema is back, text for text"
+        );
+        assert_eq!(applied_migrations(&conn).unwrap(), vec!["0001_init"]);
+    }
+
+    #[test]
+    fn unknown_applied_migration_ids_are_ignored() {
+        let mut conn = fresh();
+        migrate(&mut conn, Utc::now()).unwrap();
+        conn.execute(
+            "INSERT INTO migrations (id, applied_at) VALUES ('0003_future', '2027-01-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        assert!(migrate(&mut conn, Utc::now()).unwrap().is_empty());
+        assert_eq!(
+            applied_migrations(&conn).unwrap(),
+            vec!["0001_init", "0002_feedback", "0003_future"]
+        );
     }
 }
