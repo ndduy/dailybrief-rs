@@ -60,10 +60,10 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 
 ### Phase 2: Rating UI (`rating-ui`)
 - [x] Task 3: Rating buttons with inline reasons on the digest card; `POST /rate` (store, replace, un-rate); 24 KiB cap
-- [ ] Task 4: Positive ratings join the exploit profile as read-like vectors
+- [x] Task 4: Positive ratings join the exploit profile as read-like vectors
 
 ### Checkpoint B
-- [ ] `bin/check task` green; the rating flow proven by test; phone check after the Checkpoint E deploy
+- [x] `bin/check task` green; the rating flow proven by test (phone check pending the Checkpoint E deploy)
 - [ ] Review with human
 
 ### Phase 3: Curator tools (`curator-tools`)

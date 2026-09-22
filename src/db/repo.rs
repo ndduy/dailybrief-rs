@@ -539,22 +539,44 @@ pub fn insert_read(
     Ok(())
 }
 
+/// Where a profile signal came from (ADR 0016: a 👍 is read-like scoring input).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalKind {
+    Read,
+    Rating,
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct ReadVector {
+pub struct SignalVector {
     pub item_id: String,
+    pub kind: SignalKind,
     pub vector: Vec<f32>,
 }
 
-/// Vectors of the most recently read items (newest first), for the profile.
-pub fn list_read_vectors(conn: &Connection, limit: usize) -> Result<Vec<ReadVector>, DbError> {
+/// Vectors of the most recent reads and positive ratings together (newest first, one window
+/// and one ranking for both), for the profile.
+pub fn list_profile_signal_vectors(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<SignalVector>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT r.item_id, i.vector FROM reads r JOIN items i ON i.id = r.item_id
-         WHERE i.vector IS NOT NULL ORDER BY r.at DESC, r.id DESC LIMIT ?1",
+        "SELECT x.item_id, x.kind, i.vector FROM (
+             SELECT item_id, at, id, 'read' AS kind FROM reads
+             UNION ALL
+             SELECT item_id, at, id, 'rating' AS kind FROM ratings WHERE sign = 'up'
+         ) x JOIN items i ON i.id = x.item_id
+         WHERE i.vector IS NOT NULL ORDER BY x.at DESC, x.kind DESC, x.id DESC LIMIT ?1",
     )?;
     let rows = stmt
         .query_map([limit as i64], |row| {
-            Ok(ReadVector {
+            let kind: String = row.get(1)?;
+            Ok(SignalVector {
                 item_id: row.get(0)?,
+                kind: if kind == "rating" {
+                    SignalKind::Rating
+                } else {
+                    SignalKind::Read
+                },
                 vector: decode_vector(row, "vector")?.unwrap_or_default(),
             })
         })?

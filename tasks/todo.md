@@ -69,18 +69,18 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `profile_vectors` adds the vectors of 👍-rated items within `candidate_days`, ranked with the reads by recency and weighted by the same `read_weight`; the `ProfileVector` source tag says `rating`. `get_briefing` is unchanged. A 👎 has no effect on scoring (ADR 0016).
 
 **Acceptance criteria:**
-- [ ] test: `a_positive_rating_moves_an_items_rank_in_exploit` (seeded fixture: rate one item up, an item similar to it climbs, the list order otherwise stays); `a_negative_rating_changes_no_score`; `ratings_outside_the_window_are_ignored`.
+- [x] test: `a_positive_rating_moves_an_items_rank_in_exploit` (seeded fixture: rate one item up, an item similar to it climbs, the list order otherwise stays); `a_negative_rating_changes_no_score`; `ratings_outside_the_window_are_ignored`.
 
 **Verification:**
-- [ ] `bin/dc cargo test profile candidates`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test profile candidates`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 2
 **Files likely touched:** `src/core/profile.rs`, `src/db/repo.rs`, `src/core/candidates.rs`
 **Estimated scope:** Small
 
 ## Checkpoint B
-- [ ] `bin/check task` green; the rating flow proven by test; phone check after the Checkpoint E deploy
+- [x] `bin/check task` green; the rating flow proven by test (phone check pending the Checkpoint E deploy)
 - [ ] Review with human
 
 ---

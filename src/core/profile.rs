@@ -1,6 +1,7 @@
 //! The profile signal (`SPEC.md` §5): topic vectors weighted by `topics.weight` (damped when
-//! saturated) plus the most recent reads decayed by recency rank. `exploit_score` is a number next
-//! to a candidate, never a decision.
+//! saturated) plus the most recent reads and 👍 ratings, one list decayed by recency rank
+//! (ADR 0016: a positive rating is scoring input like a read; a 👎 changes no score).
+//! `exploit_score` is a number next to a candidate, never a decision.
 
 use std::sync::Arc;
 
@@ -13,13 +14,14 @@ use crate::db::{Connection, Db, DbError, repo};
 pub const SATURATION_DAMP_AT: i64 = 3;
 /// A read contributes this much at rank 1, decayed by `1 / (1 + log10(rank))`.
 pub const READ_BASE_WEIGHT: f32 = 0.5;
-/// How many recent reads enter the profile.
+/// How many recent reads and positive ratings, together, enter the profile.
 pub const READ_LIMIT: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProfileKind {
     Topic,
     Read,
+    Rating,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,7 +73,8 @@ pub fn read_weight(rank: usize) -> f32 {
     READ_BASE_WEIGHT / (1.0 + (rank as f32).log10())
 }
 
-/// Every topic with a vector (weight × 0.5 when saturated) and the `READ_LIMIT` most recent reads.
+/// Every topic with a vector (weight × 0.5 when saturated) and the `READ_LIMIT` most recent
+/// reads and 👍 ratings, ranked together by time.
 pub fn profile_vectors(conn: &Connection) -> Result<Vec<ProfileVector>, DbError> {
     let mut out = Vec::new();
     for t in repo::list_topics(conn)? {
@@ -90,15 +93,18 @@ pub fn profile_vectors(conn: &Connection) -> Result<Vec<ProfileVector>, DbError>
             vector,
         });
     }
-    for (i, read) in repo::list_read_vectors(conn, READ_LIMIT)?
+    for (i, signal) in repo::list_profile_signal_vectors(conn, READ_LIMIT)?
         .into_iter()
         .enumerate()
     {
         out.push(ProfileVector {
-            kind: ProfileKind::Read,
-            id: read.item_id,
+            kind: match signal.kind {
+                repo::SignalKind::Read => ProfileKind::Read,
+                repo::SignalKind::Rating => ProfileKind::Rating,
+            },
+            id: signal.item_id,
             weight: read_weight(i + 1),
-            vector: read.vector,
+            vector: signal.vector,
         });
     }
     Ok(out)
@@ -240,6 +246,93 @@ mod tests {
         assert_eq!(reads[0].0, "new");
         assert!((reads[0].1 - 0.5).abs() < 1e-6);
         assert!(reads[1].1 < reads[0].1);
+    }
+
+    #[test]
+    fn positive_ratings_rank_with_reads_and_negative_ones_do_not_enter() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|c| {
+            crate::core::testutil::source(c, "s")?;
+            for (id, i) in [("read", 2usize), ("liked", 3), ("disliked", 4)] {
+                crate::core::testutil::item(c, id, "s", Some(unit(i)), "2026-09-16T00:00:00.000Z")?;
+            }
+            repo::insert_read(c, "read", None, "2026-09-16T01:00:00.000Z")?;
+            repo::upsert_rating(
+                c,
+                "liked",
+                None,
+                "up",
+                "new_to_me",
+                "2026-09-16T02:00:00.000Z",
+            )?;
+            repo::upsert_rating(
+                c,
+                "disliked",
+                None,
+                "down",
+                "off_topic",
+                "2026-09-16T03:00:00.000Z",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let profile = db.with(|c| profile_vectors(c)).unwrap();
+        let got: Vec<(ProfileKind, &str, f32)> = profile
+            .iter()
+            .map(|p| (p.kind, p.id.as_str(), p.weight))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                (ProfileKind::Rating, "liked", read_weight(1)),
+                (ProfileKind::Read, "read", read_weight(2)),
+            ],
+            "the newer 👍 ranks first, the 👎 is absent"
+        );
+    }
+
+    #[test]
+    fn ratings_outside_the_window_are_ignored() {
+        let db = Db::open_in_memory().unwrap();
+        db.with(|c| {
+            crate::core::testutil::source(c, "s")?;
+            crate::core::testutil::item(
+                c,
+                "liked",
+                "s",
+                Some(unit(3)),
+                "2026-09-01T00:00:00.000Z",
+            )?;
+            crate::core::testutil::item(c, "x", "s", Some(unit(2)), "2026-09-16T00:00:00.000Z")?;
+            repo::upsert_rating(
+                c,
+                "liked",
+                None,
+                "up",
+                "new_to_me",
+                "2026-09-01T00:00:00.000Z",
+            )?;
+            for i in 0..READ_LIMIT {
+                repo::insert_read(
+                    c,
+                    "x",
+                    None,
+                    &format!("2026-09-16T00:{:02}:{:02}.000Z", i / 60, i % 60),
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        let profile = db.with(|c| profile_vectors(c)).unwrap();
+        assert_eq!(
+            profile.len(),
+            READ_LIMIT,
+            "the window is the same {READ_LIMIT} newest signals"
+        );
+        assert!(
+            profile.iter().all(|p| p.kind == ProfileKind::Read),
+            "the old 👍 fell out"
+        );
     }
 
     #[test]

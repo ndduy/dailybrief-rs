@@ -364,6 +364,60 @@ mod tests {
         assert_eq!(clamp_limit(500, MAX_LIMIT), 100);
     }
 
+    /// `a` sits on the topic axis, `c` between the topic and the rated direction, `d` on a
+    /// third axis; `r` (the rated item) is too old to be a candidate itself.
+    fn rating_fixture() -> Db {
+        let db = db_with_topic();
+        db.with(|c| {
+            item(c, "a", "s", Some(unit(0)), RECENT)?;
+            item(c, "c", "s", Some(mixed(0.3, 0.3)), RECENT)?;
+            item(c, "d", "s", Some(unit(2)), RECENT)?;
+            item(c, "r", "s", Some(unit(1)), "2026-08-01T00:00:00.000Z")?;
+            Ok(())
+        })
+        .unwrap();
+        db
+    }
+
+    fn exploit_order(db: &Db) -> Vec<(String, f32)> {
+        db.with(|c| list_candidates(c, &caps(), Strategy::Exploit, 500, now()))
+            .unwrap()
+            .into_iter()
+            .map(|c| (c.id, c.score))
+            .collect()
+    }
+
+    #[test]
+    fn a_positive_rating_moves_an_items_rank_in_exploit() {
+        let db = rating_fixture();
+        let before = exploit_order(&db);
+        assert_eq!(
+            before.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "c", "d"]
+        );
+        db.with(|c| repo::upsert_rating(c, "r", None, "up", "new_to_me", RECENT))
+            .unwrap();
+        let after = exploit_order(&db);
+        assert_eq!(
+            after.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vec!["c", "a", "d"],
+            "c, which shares the rated direction, climbs past a; d stays last"
+        );
+        assert!(
+            after.iter().all(|(id, _)| id != "r"),
+            "the rated item is not a candidate"
+        );
+    }
+
+    #[test]
+    fn a_negative_rating_changes_no_score() {
+        let db = rating_fixture();
+        let before = exploit_order(&db);
+        db.with(|c| repo::upsert_rating(c, "r", None, "down", "off_topic", RECENT))
+            .unwrap();
+        assert_eq!(exploit_order(&db), before);
+    }
+
     #[test]
     fn exploit_excludes_shown_items() {
         let db = db_with_topic();
