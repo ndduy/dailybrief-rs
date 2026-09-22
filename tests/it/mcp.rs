@@ -340,6 +340,136 @@ async fn get_profile_omits_topic_descriptions() {
     assert!(s0.get("lastOkAt").is_some() && s0["enabled"] == true);
 }
 
+fn evidence() -> Value {
+    json!({ "summary": "three off_topic ratings on Topic 2 this week", "ratingIds": [1, 2, 3], "readCount": 0 })
+}
+
+#[tokio::test]
+async fn propose_change_writes_one_row_and_nothing_else() {
+    let db = seeded();
+    let before = db.with(|c| repo::row_counts(c)).unwrap();
+    let rig = Rig::start_as(db.clone(), Role::Curator).await;
+    let r = rig
+        .structured(
+            "propose_change",
+            json!({ "kind": "topic_weight", "payload": { "topicId": "t2", "weight": 0.5 }, "evidence": evidence() }),
+        )
+        .await;
+    assert_eq!(r["ok"], true);
+    let id = r["proposalId"].as_str().unwrap().to_string();
+    assert!(id.starts_with("p-2026-09-17-"), "{id}");
+    let after = db.with(|c| repo::row_counts(c)).unwrap();
+    let diff: Vec<_> = before.iter().zip(&after).filter(|(a, b)| a != b).collect();
+    assert_eq!(diff.len(), 1, "only proposals changed: {diff:?}");
+    assert_eq!(diff[0].1, &("proposals", 1));
+    let row = db.with(|c| repo::get_proposal(c, &id)).unwrap().unwrap();
+    assert_eq!(row.status, "pending");
+    assert_eq!(row.run_id.as_deref(), Some(RUN));
+    assert_eq!(row.kind, "topic_weight");
+    let payload: Value = serde_json::from_str(&row.payload_json).unwrap();
+    assert_eq!(payload["payload"]["weight"], 0.5);
+    let ev: Value = serde_json::from_str(&row.evidence_json).unwrap();
+    assert_eq!(ev["ratingIds"], json!([1, 2, 3]));
+    let w: f64 = db
+        .with(|c| Ok(repo::get_topic(c, "t2")?.unwrap().weight))
+        .unwrap();
+    assert_eq!(w, 1.0, "the topic itself is untouched until approval");
+}
+
+#[tokio::test]
+async fn propose_change_rejects_unknown_kind_bounds_and_unvalidated_source() {
+    let rig = Rig::start_as(seeded(), Role::Curator).await;
+    let cases = [
+        (
+            "unknown kind",
+            json!({ "kind": "rename_topic", "payload": {}, "evidence": evidence() }),
+        ),
+        (
+            "weight out of bounds",
+            json!({ "kind": "topic_weight", "payload": { "topicId": "t0", "weight": 9 }, "evidence": evidence() }),
+        ),
+        (
+            "description too long",
+            json!({ "kind": "add_topic", "payload": { "name": "Fungi", "description": "x".repeat(201), "weight": 1.0 }, "evidence": evidence() }),
+        ),
+        (
+            "payload field missing",
+            json!({ "kind": "disable_source", "payload": {}, "evidence": evidence() }),
+        ),
+        (
+            "unvalidated source",
+            json!({ "kind": "add_source", "payload": { "url": "https://new.example/feed", "title": "New" }, "evidence": evidence() }),
+        ),
+        (
+            "notes too long",
+            json!({ "kind": "topic_weight", "payload": { "topicId": "t0", "weight": 2 }, "evidence": { "summary": "s", "notes": "n".repeat(501) } }),
+        ),
+    ];
+    let mut texts = Vec::new();
+    for (label, args) in cases {
+        let err = rig.error_of("propose_change", args).await;
+        texts.push(json!({ "case": label, "error": err }));
+    }
+    insta::assert_json_snapshot!("propose_change_rejections", texts);
+    let n: i64 = rig
+        .db
+        .with(|c| {
+            Ok(repo::row_counts(c)?
+                .into_iter()
+                .find(|(t, _)| *t == "proposals")
+                .unwrap()
+                .1)
+        })
+        .unwrap();
+    assert_eq!(n, 0, "a refused proposal writes nothing");
+}
+
+#[tokio::test]
+async fn propose_change_needs_an_existing_target() {
+    let db = seeded();
+    db.with(|c| repo::set_source_enabled(c, "src7", false))
+        .unwrap();
+    let rig = Rig::start_as(db, Role::Curator).await;
+    let err = rig
+        .error_of("propose_change", json!({ "kind": "topic_weight", "payload": { "topicId": "nope", "weight": 2 }, "evidence": evidence() }))
+        .await;
+    assert_eq!(
+        err,
+        "Proposal refused: topic 'nope' does not exist; use an id from get_profile."
+    );
+    let err = rig
+        .error_of("propose_change", json!({ "kind": "promote_explore_topic", "payload": { "topicId": "nope" }, "evidence": evidence() }))
+        .await;
+    assert!(err.contains("topic 'nope' does not exist"), "{err}");
+    let err = rig
+        .error_of("propose_change", json!({ "kind": "disable_source", "payload": { "sourceId": "nope" }, "evidence": evidence() }))
+        .await;
+    assert_eq!(
+        err,
+        "Proposal refused: source 'nope' does not exist; use an id from get_profile."
+    );
+    let err = rig
+        .error_of("propose_change", json!({ "kind": "disable_source", "payload": { "sourceId": "src7" }, "evidence": evidence() }))
+        .await;
+    assert_eq!(err, "Proposal refused: source 'src7' is already disabled.");
+    let err = rig
+        .error_of("propose_change", json!({ "kind": "add_topic", "payload": { "name": "T1", "description": "", "weight": 1.0 }, "evidence": evidence() }))
+        .await;
+    assert_eq!(
+        err,
+        "Proposal refused: topic 't1' already exists; propose topic_weight instead."
+    );
+    // The happy path for disable_source and promote_explore_topic on real targets.
+    let r = rig
+        .structured("propose_change", json!({ "kind": "disable_source", "payload": { "sourceId": "src3" }, "evidence": evidence() }))
+        .await;
+    assert_eq!(r["ok"], true);
+    let r = rig
+        .structured("propose_change", json!({ "kind": "promote_explore_topic", "payload": { "topicId": "t3" }, "evidence": evidence() }))
+        .await;
+    assert_eq!(r["ok"], true);
+}
+
 #[tokio::test]
 async fn an_editor_server_has_no_propose_change() {
     let rig = Rig::start(seeded()).await;

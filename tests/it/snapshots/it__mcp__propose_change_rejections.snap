@@ -1,0 +1,30 @@
+---
+source: tests/it/mcp.rs
+expression: texts
+---
+[
+  {
+    "case": "unknown kind",
+    "error": "Proposal refused: kind must be one of topic_weight, add_topic, disable_source, add_source, promote_explore_topic; got 'rename_topic'."
+  },
+  {
+    "case": "weight out of bounds",
+    "error": "Proposal refused: weight must be within 0.1..=5, got 9."
+  },
+  {
+    "case": "description too long",
+    "error": "Proposal refused: description is 201 characters; the cap is 200."
+  },
+  {
+    "case": "payload field missing",
+    "error": "Proposal refused: payload for disable_source does not parse: missing field `sourceId`."
+  },
+  {
+    "case": "unvalidated source",
+    "error": "Proposal refused: add_source needs a url that validate_feed accepted in this run."
+  },
+  {
+    "case": "notes too long",
+    "error": "Proposal refused: evidence.notes is 501 characters; the cap is 500."
+  }
+]

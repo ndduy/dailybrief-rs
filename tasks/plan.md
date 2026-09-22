@@ -70,10 +70,10 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [x] Task 5: `Role` in the run, `${RUN_ROLE}` in `mcp.json`, role-aware tool listing with both listings snapshotted
 - [x] Task 6: `get_feedback` and `get_profile` (`core::curator_input`)
 - [x] Task 7: `find_feeds` (autodiscovery) and `validate_feed` (`core::feeds_discovery`)
-- [ ] Task 8: `propose_change`: typed payloads, evidence, one row and nothing else
+- [x] Task 8: `propose_change`: typed payloads, evidence, one row and nothing else
 
 ### Checkpoint C
-- [ ] `bin/check task` green; editor `tools_list` snapshot unchanged; curator listing snapshotted
+- [x] `bin/check task` green; editor `tools_list` snapshot unchanged; curator listing snapshotted
 - [ ] Review with human
 
 ### Phase 4: Curator run (`curator-run`)

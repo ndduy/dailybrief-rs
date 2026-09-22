@@ -140,18 +140,18 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** Input `{ kind, payload, evidence }` parsed into `ProposalChange` and `Evidence`; `add_source` requires the URL to have passed `validate_feed` in this run (server memory from Task 7); `topic_weight` and `promote_explore_topic` require an existing topic; `disable_source` an existing enabled source. Writes one `proposals` row with `run_id`, returns `{ ok: true, proposalId }`; violations are typed rejections the prompt can quote.
 
 **Acceptance criteria:**
-- [ ] test: `propose_change_writes_one_row_and_nothing_else` (row counts of every table before and after); `propose_change_rejects_unknown_kind_bounds_and_unvalidated_source` (five rejection texts snapshotted); `propose_change_needs_an_existing_target`.
+- [x] test: `propose_change_writes_one_row_and_nothing_else` (row counts of every table before and after); `propose_change_rejects_unknown_kind_bounds_and_unvalidated_source` (five rejection texts snapshotted); `propose_change_needs_an_existing_target`.
 
 **Verification:**
-- [ ] `bin/dc cargo test mcp`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test mcp`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Tasks 6, 7
 **Files likely touched:** `src/mcp/tools/propose_change.rs`, `src/mcp/server.rs`, `src/mcp/error.rs`, `tests/it/mcp.rs`
 **Estimated scope:** Medium
 
 ## Checkpoint C
-- [ ] `bin/check task` green; editor `tools_list` snapshot unchanged; curator listing snapshotted
+- [x] `bin/check task` green; editor `tools_list` snapshot unchanged; curator listing snapshotted
 - [ ] Review with human
 
 ---

@@ -27,6 +27,8 @@ pub enum ToolError {
     NotImplemented(&'static str),
     #[error("Could not fetch that page: {0}.")]
     Feed(String),
+    #[error("Proposal refused: {0}")]
+    Proposal(String),
 }
 
 impl From<DbError> for ToolError {

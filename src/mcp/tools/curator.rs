@@ -1,6 +1,8 @@
 //! The five Curator tools (`spec/m3.md` curator-tools): `get_feedback` and `get_profile` wrap
 //! `core::curator_input`; `find_feeds` and `validate_feed` wrap `core::feeds_discovery` (and
-//! remember every URL that validated, for `add_source`); `propose_change` follows in Task 8.
+//! remember every URL that validated, for `add_source`); `propose_change` validates a typed
+//! change against the profile and writes one `proposals` row through `core::feedback::propose`
+//! and nothing else (ADR 0016).
 
 use rmcp::model::CallToolResult;
 use schemars::JsonSchema;
@@ -8,8 +10,9 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::core::curator_input;
-use crate::core::feedback::Evidence;
+use crate::core::feedback::{self, Evidence, FeedbackError, ProposalChange};
 use crate::core::feeds_discovery;
+use crate::db::repo;
 use crate::mcp::error::{ToolError, ok, rejected};
 use crate::mcp::server::DailyBriefServer;
 
@@ -73,11 +76,93 @@ pub async fn validate_feed(s: &DailyBriefServer, i: UrlInput) -> Result<CallTool
     }
 }
 
+pub const KINDS: [&str; 5] = [
+    "topic_weight",
+    "add_topic",
+    "disable_source",
+    "add_source",
+    "promote_explore_topic",
+];
+
+/// `{ kind, payload, evidence }` → `{ ok: true, proposalId }`. Every refusal is one sentence
+/// naming what to fix: the kind, a payload field, a missing target, or an unvalidated URL.
 pub async fn propose_change(
-    _s: &DailyBriefServer,
-    _i: ProposeChangeInput,
+    s: &DailyBriefServer,
+    i: ProposeChangeInput,
 ) -> Result<CallToolResult, ToolError> {
-    Err(ToolError::NotImplemented("propose_change"))
+    if !KINDS.contains(&i.kind.as_str()) {
+        return Err(ToolError::Proposal(format!(
+            "kind must be one of {}; got '{}'.",
+            KINDS.join(", "),
+            i.kind
+        )));
+    }
+    let change: ProposalChange =
+        serde_json::from_value(serde_json::json!({ "kind": i.kind, "payload": i.payload }))
+            .map_err(|e| {
+                ToolError::Proposal(format!("payload for {} does not parse: {e}.", i.kind))
+            })?;
+    change.validate().map_err(refused)?;
+    i.evidence.validate().map_err(refused)?;
+    // Targets must exist now, so the reader never sees a proposal that cannot apply.
+    let target = change.clone();
+    let problem = s.db.call(move |conn| target_problem(conn, &target)).await?;
+    if let Some(p) = problem {
+        return Err(ToolError::Proposal(p));
+    }
+    if let ProposalChange::AddSource { url, .. } = &change
+        && !s.validated_feeds.lock().await.contains(url)
+    {
+        return Err(ToolError::Proposal(
+            "add_source needs a url that validate_feed accepted in this run.".into(),
+        ));
+    }
+    let (run_id, now, evidence) = (s.run_id.clone(), (s.now)(), i.evidence);
+    let id =
+        s.db.call(move |conn| {
+            feedback::propose(conn, Some(&run_id), &change, &evidence, now).map_err(|e| match e {
+                FeedbackError::Db(db) => db,
+                other => crate::db::DbError::Corrupt(other.to_string()),
+            })
+        })
+        .await?;
+    Ok(ok(serde_json::json!({ "ok": true, "proposalId": id })))
+}
+
+fn refused(e: FeedbackError) -> ToolError {
+    ToolError::Proposal(format!("{e}"))
+}
+
+/// Why the change could not apply today, if anything (one sentence), read-only.
+fn target_problem(
+    conn: &crate::db::Connection,
+    change: &ProposalChange,
+) -> Result<Option<String>, crate::db::DbError> {
+    Ok(match change {
+        ProposalChange::TopicWeight { topic_id, .. }
+        | ProposalChange::PromoteExploreTopic { topic_id } => repo::get_topic(conn, topic_id)?
+            .is_none()
+            .then(|| format!("topic '{topic_id}' does not exist; use an id from get_profile.")),
+        ProposalChange::AddTopic { name, .. } => {
+            let id = feedback::slug(name);
+            repo::get_topic(conn, &id)?
+                .is_some()
+                .then(|| format!("topic '{id}' already exists; propose topic_weight instead."))
+        }
+        ProposalChange::DisableSource { source_id } => match repo::get_source(conn, source_id)? {
+            None => Some(format!(
+                "source '{source_id}' does not exist; use an id from get_profile."
+            )),
+            Some(src) if !src.enabled => Some(format!("source '{source_id}' is already disabled.")),
+            Some(_) => None,
+        },
+        ProposalChange::AddSource { title, .. } => {
+            let id = feedback::slug(title);
+            repo::get_source(conn, &id)?
+                .is_some()
+                .then(|| format!("source '{id}' already exists."))
+        }
+    })
 }
 
 #[cfg(test)]
