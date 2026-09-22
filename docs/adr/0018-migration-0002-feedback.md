@@ -60,3 +60,17 @@ with the old image.
 ## Rehearsal
 
 2026-09-22 (Checkpoint A): a copy of the live `brief.db` (21 runs) taken in the test container, `dailybrief migrate` applied `0002_feedback`, the rollback SQL above restored the 0001 schema (ledger, objects, `runs.role` all checked, `integrity_check` ok), and a second `migrate` re-applied it cleanly. Scripts: `data/checkpoint-a/{sq.sh,inspect.sql,rollback.sql}` (gitignored; the same SQL is `ROLLBACK_0002`).
+
+## Live apply (Checkpoint E, 2026-09-22 18:08 local)
+
+Rehearsal first, on a fresh copy of the live file: `dailybrief migrate` (HEAD 1894819) applied
+0002, then the `m2` image served that copy (`serve` with Access on: 401 on `/` and `/runs`,
+ledger untouched), so the rollback image is proven against a database that carries 0002 and
+no database restore is needed to roll back. Then live: `docker compose --profile app down`,
+`cp -p /data/brief.db /data/brief.db.pre-0002` (sha256 08907cb8… on both files), `docker
+compose --profile app run --rm --no-deps app dailybrief migrate` with the new image
+(`dailybrief-rs:m3` = commit 1894819, image fdc34795) → `applied 0002_feedback`
+(ledger `2026-09-22T11:08:31.540Z`), `up -d`. After: 21 runs, 0 ratings, 0 proposals,
+`integrity_check` ok, Access on, next scheduled run 2026-09-22 23:30 UTC. Rollback:
+`docker compose --profile app down && DAILYBRIEF_IMAGE=dailybrief-rs:m2 docker compose
+--profile app up -d`; `brief.db.pre-0002` stays in the volume until the M3 ship note closes.

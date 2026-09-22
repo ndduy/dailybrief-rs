@@ -80,3 +80,17 @@ and "/vault" are deliberately broad).
 - Logs: `docker compose --profile app logs app` (JSON lines on stderr).
 - The old TypeScript stack: `docker compose --project-directory ../dailybrief` (stopped; removed
   at the M2 ship).
+
+## M3 (2026-09-22)
+
+- Live image `dailybrief-rs:m3` (commit 1894819). Rollback target `dailybrief-rs:m2`:
+  `docker compose --profile app down && DAILYBRIEF_IMAGE=dailybrief-rs:m2 docker compose --profile app up -d`.
+  The `m2` image serves against a database that carries migration 0002 (rehearsed), so no
+  restore is needed; `/data/brief.db.pre-0002` is the pre-migration copy regardless.
+- Rollback SQL for 0002 is `ROLLBACK_0002` in `src/db/migrations.rs` (ADR 0018); run it only
+  on a copy first.
+- Weekly Curator: Sunday 07:30 local (`[curator] cron`), one job loop with the 06:30 run and
+  the 07:00 prune. `dailybrief curate` runs it by hand (one subscription run). Proposals wait
+  on `/curator`; approve applies in one transaction, reject discards.
+- `dailybrief scan-transcript --run <id>` scans a run by id. The hook's decisions appear as
+  hook events in the transcript (`--include-hook-events`).

@@ -90,7 +90,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 
 ### Checkpoint E
 - [x] `bin/check full` green; coverage not below M2 (floors pass; numbers in the M3 ship note)
-- [ ] Deploy between mornings: tag `m2`-running image, back up `brief.db`, migrate, rollback rehearsal on a copy with the `m2` image, watch the next 06:30 run
+- [x] Deploy between mornings: tag `m2`-running image, back up `brief.db`, migrate, rollback rehearsal on a copy with the `m2` image (done 2026-09-22 18:08 local, ADR 0018), watch the next 06:30 run (2026-09-23)
 - [ ] Phone: rate one item; `/curator` opens (empty)
 - [ ] Review with human
 
