@@ -124,8 +124,9 @@ pub struct IngestFile {
     pub max_redirects: u32,
     #[serde(default = "d_dedupe_cosine")]
     pub dedupe_cosine: f32,
-    /// Tests only: lets the fetcher reach a mock on 127.0.0.1. Production stays `false`.
-    #[serde(default)]
+    /// Tests only: lets the fetcher reach a mock on 127.0.0.1. Never read from the file
+    /// (`deny_unknown_fields` refuses the key), so production cannot switch the guard off.
+    #[serde(skip)]
     pub allow_loopback: bool,
 }
 impl Default for IngestFile {

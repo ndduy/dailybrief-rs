@@ -286,6 +286,8 @@ pub struct Turn {
     pub args_summary: String,
     /// Characters of text returned across this turn's tool results.
     pub result_chars: usize,
+    /// Tool results the server marked `is_error` (a rejected select, an unknown item).
+    pub errors: u32,
     /// Seconds since the previous turn's timestamp; `None` for the first turn or without timestamps.
     pub since_prev_secs: Option<f64>,
     pub tokens: Tokens,
@@ -346,11 +348,14 @@ pub fn fold_turns(events: &[RunEvent]) -> Vec<Turn> {
                     if let Block::ToolResult {
                         tool_use_id,
                         content,
-                        ..
+                        is_error,
                     } = b
                         && let Some(&idx) = by_tool_use.get(tool_use_id)
                     {
                         turns[idx].result_chars += result_len(content);
+                        if *is_error {
+                            turns[idx].errors += 1;
+                        }
                     }
                 }
             }

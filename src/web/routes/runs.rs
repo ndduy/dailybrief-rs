@@ -6,6 +6,7 @@ use axum::response::{Html, IntoResponse, Response};
 
 use super::internal;
 use crate::config::Config;
+use crate::core::time::{parse_iso, to_iso};
 use crate::db::repo::{self, RunEvent};
 use crate::harness::trajectory::{
     AttemptOutcome, CapsUsed, Event, caps_used, fold_turns, parse_line, retry_chain,
@@ -15,8 +16,6 @@ use crate::web::views::run::{render_index, render_run};
 
 /// Rows on the runs index.
 pub const INDEX_LIMIT: i64 = 30;
-/// Neighbours consulted for the retry chain.
-const CHAIN_WINDOW_ROWS: i64 = 50;
 
 /// What a run consumed, from its stored events and the configured caps.
 pub fn caps_of(config: &Config, events: &[RunEvent]) -> CapsUsed {
@@ -41,6 +40,18 @@ fn chain_window_secs(config: &Config) -> i64 {
     i64::from(2 * config.harness.claude_code.wall_clock_minutes + 5) * 60
 }
 
+/// `[started - window, started + window)` as stored-form timestamps; a run whose timestamp
+/// does not parse gets an empty window and no chain.
+fn chain_bounds(started_at: &str, window_secs: i64) -> (String, String) {
+    match parse_iso(started_at) {
+        Some(t) => (
+            to_iso(t - chrono::Duration::seconds(window_secs)),
+            to_iso(t + chrono::Duration::seconds(window_secs)),
+        ),
+        None => (started_at.to_string(), started_at.to_string()),
+    }
+}
+
 pub async fn index(State(state): State<AppState>) -> Response {
     match state
         .db
@@ -54,6 +65,7 @@ pub async fn index(State(state): State<AppState>) -> Response {
 
 pub async fn show(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     let lookup = id.clone();
+    let window = chain_window_secs(&state.config);
     let loaded = state
         .db
         .call(move |conn| {
@@ -61,7 +73,9 @@ pub async fn show(State(state): State<AppState>, Path(id): Path<String>) -> Resp
                 return Ok(None);
             };
             let events = repo::list_run_events(conn, &lookup)?;
-            let recent = repo::list_runs(conn, CHAIN_WINDOW_ROWS)?;
+            // Neighbours by time, not by recency, so an old run keeps its chain forever.
+            let (from, to) = chain_bounds(&run.started_at, window);
+            let recent = repo::list_runs_between(conn, &from, &to)?;
             Ok(Some((run, events, recent)))
         })
         .await;
@@ -69,8 +83,7 @@ pub async fn show(State(state): State<AppState>, Path(id): Path<String>) -> Resp
         Ok(Some((run, events, recent))) => {
             let turns = fold_turns(&events);
             let caps = caps_of(&state.config, &events);
-            let chain: Vec<AttemptOutcome> =
-                retry_chain(&run.id, &recent, chain_window_secs(&state.config));
+            let chain: Vec<AttemptOutcome> = retry_chain(&run.id, &recent, window);
             Html(render_run(&run, &chain, &caps, &turns).into_string()).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),

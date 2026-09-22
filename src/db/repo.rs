@@ -929,6 +929,17 @@ pub fn latest_run(conn: &Connection) -> Result<Option<RunRow>, DbError> {
         .optional()?)
 }
 
+/// Runs started in `[from, to)`, newest first: the neighbours a retry chain is read from.
+pub fn list_runs_between(conn: &Connection, from: &str, to: &str) -> Result<Vec<RunRow>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RUN_COLS} FROM runs WHERE started_at >= ?1 AND started_at < ?2 ORDER BY started_at DESC, id DESC"
+    ))?;
+    let rows = stmt
+        .query_map([from, to], map_run)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 /// The most recent `limit` runs, newest first.
 pub fn list_runs(conn: &Connection, limit: i64) -> Result<Vec<RunRow>, DbError> {
     let mut stmt = conn.prepare(&format!(

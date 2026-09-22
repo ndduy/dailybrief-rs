@@ -12,14 +12,20 @@ use crate::harness::trajectory::{AttemptOutcome, CapsUsed, Turn, Used};
 /// `SPEC.md` §3: one retry, so every run is attempt 1 or 2 of 2.
 pub const MAX_ATTEMPTS: u32 = 2;
 
-/// Styles only these pages need (the digest page has a size cap).
+/// The caps bar's styles: shared by the run pages and the day page's failed and running
+/// states (injected per page; the digest page keeps its 15 KiB cap).
+pub const CAPS_CSS: &str = r#"
+.caps{display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0}.cap{font-size:.85rem;padding:.1rem .5rem;border:1px solid var(--line);border-radius:1rem;white-space:nowrap}.cap.hit{border-color:#b32424;color:#b32424;font-weight:600}
+@media(prefers-color-scheme:dark){.cap.hit{border-color:#f66;color:#f66}}
+"#;
+
+/// Styles only the run pages need.
 const CSS: &str = r#"
 table{border-collapse:collapse;width:100%;font-size:.9rem}td,th{text-align:left;padding:.35rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}td.num,th.num{text-align:right;white-space:nowrap}
-.caps{display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0}.cap{font-size:.85rem;padding:.1rem .5rem;border:1px solid var(--line);border-radius:1rem;white-space:nowrap}.cap.hit{border-color:#b32424;color:#b32424;font-weight:600}
 .chain{margin:.5rem 0;padding-left:1.2rem}.chain li{margin:.15rem 0}
-.turns td.tool{white-space:nowrap}.turns td.args{color:var(--muted);font-family:ui-monospace,monospace;font-size:.8rem;word-break:break-all}.turns td.n{color:var(--muted)}
+.turns td.tool{white-space:nowrap}.turns td.args{color:var(--muted);font-family:ui-monospace,monospace;font-size:.8rem;word-break:break-all}.turns td.n{color:var(--muted)}.turns .err{color:#b32424;font-weight:600}
 .status-success{color:#1a7a4a}.status-failed,.status-killed{color:#b32424}.status-running{color:#9a5b00}
-@media(prefers-color-scheme:dark){.status-success{color:#5c9}.status-failed,.status-killed{color:#f66}.status-running{color:#fb4}.cap.hit{border-color:#f66;color:#f66}}
+@media(prefers-color-scheme:dark){.status-success{color:#5c9}.status-failed,.status-killed{color:#f66}.status-running{color:#fb4}}
 "#;
 
 /// `500` → `8:20`.
@@ -83,7 +89,10 @@ fn turn_row(t: &Turn) -> Markup {
             td.args {
                 @if t.tool.is_some() { (t.args_summary) } @else { (t.text_preview) }
             }
-            td.num { @if t.result_chars > 0 { (t.result_chars) } }
+            td.num {
+                @if t.result_chars > 0 { (t.result_chars) }
+                @if t.errors > 0 { " " span.err { "✗" (t.errors) } }
+            }
             td.num { (t.tokens.output) }
             td.num { (t.tokens.cache_read) }
         }
@@ -124,7 +133,7 @@ pub fn render_run(
             }
         }
     };
-    page_with_css(&title, CSS, body)
+    page_with_css(&title, &format!("{CAPS_CSS}{CSS}"), body)
 }
 
 fn wall_of(r: &RunRow) -> Option<String> {
@@ -137,7 +146,7 @@ fn wall_of(r: &RunRow) -> Option<String> {
 pub fn render_index(runs: &[RunRow]) -> Markup {
     page_with_css(
         "Runs",
-        CSS,
+        &format!("{CAPS_CSS}{CSS}"),
         html! {
             header { h1 { "Runs" } (runs_link()) }
             main {

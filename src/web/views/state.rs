@@ -2,14 +2,15 @@
 
 use maud::{Markup, html};
 
-use super::layout::{page, refresh_button, runs_link};
-use super::run::caps_bar;
+use super::layout::{page, page_with_css, refresh_button, runs_link};
+use super::run::{CAPS_CSS, caps_bar};
 use crate::db::repo::RunRow;
 use crate::harness::trajectory::CapsUsed;
 
 pub fn failed(date: &str, run: &RunRow, caps: &CapsUsed) -> Markup {
-    page(
+    page_with_css(
         &format!("No digest · {date}"),
+        CAPS_CSS,
         html! {
             header { h1 { "Daily Brief " span.meta { (date) } } (refresh_button()) }
             main.state {
@@ -28,8 +29,9 @@ pub fn failed(date: &str, run: &RunRow, caps: &CapsUsed) -> Markup {
 }
 
 pub fn running(date: &str, run: &RunRow, caps: &CapsUsed) -> Markup {
-    page(
+    page_with_css(
         &format!("Run in progress · {date}"),
+        CAPS_CSS,
         html! {
             header { h1 { "Daily Brief " span.meta { (date) } } (runs_link()) }
             main.state {

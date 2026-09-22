@@ -243,6 +243,24 @@ mod tests {
     }
 
     #[test]
+    fn allow_loopback_cannot_be_set_from_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            "config/config.toml",
+            "[service]\ntimezone = \"UTC\"\n[ingest]\nallow_loopback = true\n",
+        );
+        let env = env_with(&[("DAILYBRIEF_CONFIG", path.to_str().unwrap())]);
+        let err = load_config(&env).unwrap_err();
+        assert!(err.to_string().contains("allow_loopback"), "{err}");
+        let committed = load_config(&Env::from_lookup(|_| None).unwrap()).unwrap();
+        assert!(
+            !committed.ingest.allow_loopback,
+            "the committed config never allows loopback"
+        );
+    }
+
+    #[test]
     fn unknown_key_mcp_command_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let path = write(

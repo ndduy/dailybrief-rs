@@ -41,7 +41,11 @@ and had to be rebuilt from its commit, ADR 0015).
 docker compose --profile app down && DAILYBRIEF_IMAGE=dailybrief-rs:r0 docker compose --profile app up -d
 ```
 
-`dailybrief-rs:r0` is the R0 ship (commit a5f985c). Roll back when a 06:30 run fails and the
+Never run `docker compose ... build` or `up --build` with `DAILYBRIEF_IMAGE` set: the variable
+is also the build tag, and a build would overwrite the rollback image. `unset DAILYBRIEF_IMAGE`
+once the rollback is over, or the next plain `up -d` silently keeps running the old image.
+
+`dailybrief-rs:r0` is the R0 ship (commit a5f985c); `dailybrief-rs:m2` the M2 ship. Roll back when a 06:30 run fails and the
 run page does not explain it, on a 5xx from the pages, or on any sign of a token in a page or
 transcript. The database is shared and forward-compatible within a milestone (no migration
 since `0001_init`); if a milestone adds a migration, its ADR says how to roll that back.

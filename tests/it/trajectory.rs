@@ -248,6 +248,11 @@ fn fixture_turns_reconcile_with_the_result_line() {
     );
     assert_eq!(reads.iter().map(|t| t.result_chars).sum::<usize>(), 135_443);
     assert!(turns.iter().skip(1).all(|t| t.since_prev_secs.is_some()));
+    assert_eq!(
+        turns.iter().map(|t| t.errors).sum::<u32>(),
+        3,
+        "three tool results were errors in this run"
+    );
     assert!(turns.iter().all(|t| t.tokens.output > 0));
 }
 

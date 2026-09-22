@@ -767,7 +767,48 @@ async fn failed_state_shows_the_caps_bar_and_run_link() {
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("No digest"));
     assert!(body.contains("<div class=\"caps\""), "{body}");
+    assert!(
+        body.contains(".cap.hit{"),
+        "the caps bar is styled on the day page too"
+    );
     assert!(body.contains("href=\"/runs/2026-09-17-fail\""));
+}
+
+/// The retry chain is read by time window, so a pair of attempts keeps its chain no matter
+/// how many newer runs exist.
+#[tokio::test]
+async fn retry_chain_for_a_run_outside_the_recent_rows() {
+    let db = Db::open_in_memory().unwrap();
+    let insert = |db: &Db, id: &str, attempt: i64, started: &str| {
+        db.with(|c| {
+            repo::insert_run(
+                c,
+                &NewRun {
+                    id: id.into(),
+                    kind: RunKind::Scheduled,
+                    harness: "claude-code".into(),
+                    attempt,
+                    started_at: started.into(),
+                    transcript_path: None,
+                },
+            )
+        })
+        .unwrap();
+    };
+    insert(&db, "2026-06-01-old1", 1, "2026-05-31T23:30:00.000Z");
+    insert(&db, "2026-06-01-old2", 2, "2026-05-31T23:45:00.000Z");
+    for i in 0..60 {
+        insert(
+            &db,
+            &format!("2026-08-01-n{i:02}"),
+            1,
+            &format!("2026-08-01T{:02}:00:00.000Z", i % 24),
+        );
+    }
+    let (status, _, body) = get(db, "/runs/2026-06-01-old2").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<ol class=\"chain\">"), "{body}");
+    assert!(body.contains("href=\"/runs/2026-06-01-old1\""));
 }
 
 #[tokio::test]
