@@ -124,12 +124,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `core::feeds_discovery`: `find_feeds(http, url)` fetches the page through the guarded `Http`, collects `<link rel="alternate" type="application/(rss|atom)+xml">` hrefs (resolved against the page) and probes `/feed`, `/rss.xml`, `/atom.xml`, `/index.xml` with `validate_feed`; `validate_feed(http, url)` fetches with the body cap, parses with `feed-rs`, returns title, items per day over the last 30 days, `lastItemAt`, or a typed error. The two tools wrap them; the server remembers validated URLs for Task 8.
 
 **Acceptance criteria:**
-- [ ] test: `find_feeds_discovers_link_tags_and_common_paths` (wiremock page with two link tags, one probe hit); `validate_feed_reports_items_per_day` (RSS 2.0 and Atom fixtures with dates), `validate_feed_rejects_non_feeds_and_404` (typed error text).
-- [ ] test: the private-address policy applies (a page linking to `http://10.0.0.1/feed` yields no feed and no request).
+- [x] test: `find_feeds_discovers_link_tags_and_common_paths` (wiremock page with two link tags, one probe hit); `validate_feed_reports_items_per_day` (RSS 2.0 and Atom fixtures with dates), `validate_feed_rejects_non_feeds_and_404` (typed error text).
+- [x] test: the private-address policy applies (a page linking to `http://10.0.0.1/feed` yields no feed and no request).
 
 **Verification:**
-- [ ] `bin/dc cargo test feeds_discovery mcp`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test feeds_discovery mcp`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 5
 **Files likely touched:** `src/core/feeds_discovery.rs`, `src/core/mod.rs`, `src/mcp/tools/find_feeds.rs`, `src/mcp/tools/validate_feed.rs`, `src/mcp/server.rs`, `tests/it/mcp.rs`

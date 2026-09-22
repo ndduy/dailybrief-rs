@@ -25,6 +25,8 @@ pub enum ToolError {
     Internal(String),
     #[error("{0} is not available in this build yet.")]
     NotImplemented(&'static str),
+    #[error("Could not fetch that page: {0}.")]
+    Feed(String),
 }
 
 impl From<DbError> for ToolError {

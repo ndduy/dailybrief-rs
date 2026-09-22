@@ -44,6 +44,8 @@ pub struct DailyBriefServer {
     /// second call waits and gets the same report instead of fetching again.
     pub fetch_report: Arc<tokio::sync::Mutex<Option<Value>>>,
     pub role: Role,
+    /// URLs `validate_feed` accepted in this run; `add_source` proposals must name one.
+    pub validated_feeds: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
     /// The tool set for `role`; `list_tools` and `call_tool` go through it and nothing else.
     tool_router: Arc<ToolRouter<Self>>,
 }
@@ -69,6 +71,7 @@ impl DailyBriefServer {
             publish_rejections: Arc::new(AtomicU8::new(0)),
             fetch_report: Arc::new(tokio::sync::Mutex::new(None)),
             role: Role::Editor,
+            validated_feeds: Arc::new(tokio::sync::Mutex::new(Default::default())),
             tool_router: Arc::new(Self::editor_router()),
         }
     }
