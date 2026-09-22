@@ -3,6 +3,7 @@
 
 mod auth;
 mod compose;
+mod feedback;
 mod harness;
 mod mcp;
 mod mcp_stdout;

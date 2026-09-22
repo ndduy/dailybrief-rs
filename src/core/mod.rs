@@ -5,6 +5,7 @@ pub mod dedupe;
 pub mod digest;
 pub mod embed;
 pub mod extract;
+pub mod feedback;
 pub mod fetch;
 pub mod http;
 pub mod ingest;

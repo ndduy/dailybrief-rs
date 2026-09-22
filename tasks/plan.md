@@ -52,7 +52,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 
 ### Phase 1: Feedback DB (`feedback-db`)
 - [x] Task 1: Migration `0002_feedback` (ratings, proposals, `runs.role`) with rollback SQL and tests (ADR 0018)
-- [ ] Task 2: `core::feedback` types, repo functions, transactional `apply`, the writer-guard test (ADR 0016)
+- [x] Task 2: `core::feedback` types, repo functions, transactional `apply`, the writer-guard test (ADR 0016)
 
 ### Checkpoint A
 - [ ] `bin/check task` green; 0002 applies on a copy of `brief.db` and rolls back; the R0 ledger test still passes

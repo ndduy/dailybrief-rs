@@ -1439,3 +1439,274 @@ mod tests {
         );
     }
 }
+
+// ---------- ratings and proposals (M3, ADR 0016 / 0018) ----------
+
+/// Runs `f` inside one transaction: commit on `Ok`, roll back on `Err`. Callers outside
+/// `db` use this instead of naming rusqlite (`repo_is_the_only_sql_site`).
+pub fn in_transaction<T, E: From<DbError>>(
+    conn: &Connection,
+    f: impl FnOnce(&Connection) -> Result<T, E>,
+) -> Result<T, E> {
+    let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+    let out = f(&tx)?;
+    tx.commit().map_err(DbError::from)?;
+    Ok(out)
+}
+
+/// Every user table in the schema, with its row count. The "nothing else changed" assertions
+/// diff two of these.
+pub const TABLES: [&str; 11] = [
+    "sources",
+    "items",
+    "topics",
+    "reads",
+    "digests",
+    "digest_items",
+    "runs",
+    "run_events",
+    "feed_issues",
+    "ratings",
+    "proposals",
+];
+
+pub fn row_counts(conn: &Connection) -> Result<Vec<(&'static str, i64)>, DbError> {
+    let mut out = Vec::with_capacity(TABLES.len());
+    for table in TABLES {
+        let n: i64 = conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
+        out.push((table, n));
+    }
+    Ok(out)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RatingRow {
+    pub id: i64,
+    pub item_id: String,
+    pub digest_id: Option<String>,
+    pub sign: String,
+    pub reason: String,
+    pub at: String,
+}
+
+fn map_rating(row: &Row<'_>) -> rusqlite::Result<RatingRow> {
+    Ok(RatingRow {
+        id: row.get("id")?,
+        item_id: row.get("item_id")?,
+        digest_id: row.get("digest_id")?,
+        sign: row.get("sign")?,
+        reason: row.get("reason")?,
+        at: row.get("at")?,
+    })
+}
+
+const RATING_COLS: &str = "id, item_id, digest_id, sign, reason, at";
+
+/// One rating per item: a second rating replaces the first.
+pub fn upsert_rating(
+    conn: &Connection,
+    item_id: &str,
+    digest_id: Option<&str>,
+    sign: &str,
+    reason: &str,
+    at: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO ratings (item_id, digest_id, sign, reason, at) VALUES (?1, ?2, ?3, ?4, ?5) \
+         ON CONFLICT(item_id) DO UPDATE SET digest_id = excluded.digest_id, sign = excluded.sign, \
+             reason = excluded.reason, at = excluded.at",
+        params![item_id, digest_id, sign, reason, at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_rating(conn: &Connection, item_id: &str) -> Result<usize, DbError> {
+    Ok(conn.execute("DELETE FROM ratings WHERE item_id = ?1", [item_id])?)
+}
+
+pub fn get_rating(conn: &Connection, item_id: &str) -> Result<Option<RatingRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {RATING_COLS} FROM ratings WHERE item_id = ?1"),
+            [item_id],
+            map_rating,
+        )
+        .optional()?)
+}
+
+/// Ratings at or after `since`, newest first.
+pub fn list_ratings_since(conn: &Connection, since: &str) -> Result<Vec<RatingRow>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RATING_COLS} FROM ratings WHERE at >= ?1 ORDER BY at DESC, id DESC"
+    ))?;
+    let rows = stmt
+        .query_map([since], map_rating)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewProposal {
+    pub id: String,
+    pub run_id: Option<String>,
+    pub kind: String,
+    pub payload_json: String,
+    pub evidence_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProposalRow {
+    pub id: String,
+    pub run_id: Option<String>,
+    pub kind: String,
+    pub payload_json: String,
+    pub evidence_json: String,
+    pub status: String,
+    pub created_at: String,
+    pub decided_at: Option<String>,
+    pub applied_json: Option<String>,
+}
+
+const PROPOSAL_COLS: &str =
+    "id, run_id, kind, payload_json, evidence_json, status, created_at, decided_at, applied_json";
+
+fn map_proposal(row: &Row<'_>) -> rusqlite::Result<ProposalRow> {
+    Ok(ProposalRow {
+        id: row.get("id")?,
+        run_id: row.get("run_id")?,
+        kind: row.get("kind")?,
+        payload_json: row.get("payload_json")?,
+        evidence_json: row.get("evidence_json")?,
+        status: row.get("status")?,
+        created_at: row.get("created_at")?,
+        decided_at: row.get("decided_at")?,
+        applied_json: row.get("applied_json")?,
+    })
+}
+
+pub fn insert_proposal(conn: &Connection, p: &NewProposal) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO proposals (id, run_id, kind, payload_json, evidence_json, status, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6)",
+        params![
+            p.id,
+            p.run_id,
+            p.kind,
+            p.payload_json,
+            p.evidence_json,
+            p.created_at
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_proposal(conn: &Connection, id: &str) -> Result<Option<ProposalRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {PROPOSAL_COLS} FROM proposals WHERE id = ?1"),
+            [id],
+            map_proposal,
+        )
+        .optional()?)
+}
+
+/// Proposals of one status, newest first (pending ones oldest first: the queue order).
+pub fn list_proposals(
+    conn: &Connection,
+    status: crate::core::feedback::ProposalStatus,
+    limit: i64,
+) -> Result<Vec<ProposalRow>, DbError> {
+    let order = if status == crate::core::feedback::ProposalStatus::Pending {
+        "ASC"
+    } else {
+        "DESC"
+    };
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {PROPOSAL_COLS} FROM proposals WHERE status = ?1 ORDER BY created_at {order}, id {order} LIMIT ?2"
+    ))?;
+    let rows = stmt
+        .query_map(params![status.as_str(), limit], map_proposal)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Moves a pending proposal to `status`; returns the rows changed (0 when it was not pending).
+pub fn decide_proposal(
+    conn: &Connection,
+    id: &str,
+    status: crate::core::feedback::ProposalStatus,
+    decided_at: &str,
+    applied_json: Option<&str>,
+) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "UPDATE proposals SET status = ?2, decided_at = ?3, applied_json = ?4 \
+         WHERE id = ?1 AND status = 'pending'",
+        params![id, status.as_str(), decided_at, applied_json],
+    )?)
+}
+
+// The five writers of topic and source state. Only `core::feedback::apply` may call them
+// (`only_feedback_apply_writes_topics_and_sources`); `topics.toml` mirroring uses `upsert_topic`.
+
+pub fn get_topic(conn: &Connection, id: &str) -> Result<Option<TopicRow>, DbError> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {TOPIC_COLS} FROM topics WHERE id = ?1"),
+            [id],
+            map_topic,
+        )
+        .optional()?)
+}
+
+pub fn set_topic_weight(conn: &Connection, id: &str, weight: f64) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "UPDATE topics SET weight = ?2 WHERE id = ?1",
+        params![id, weight],
+    )?)
+}
+
+pub fn set_topic_origin(
+    conn: &Connection,
+    id: &str,
+    origin: crate::config::TopicOrigin,
+) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "UPDATE topics SET origin = ?2 WHERE id = ?1",
+        params![id, origin.as_str()],
+    )?)
+}
+
+pub fn insert_topic_from_proposal(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    description: &str,
+    weight: f64,
+) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO topics (id, name, description, weight, origin) VALUES (?1, ?2, ?3, ?4, 'curator')",
+        params![id, name, description, weight],
+    )?;
+    Ok(())
+}
+
+pub fn set_source_enabled(conn: &Connection, id: &str, enabled: bool) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "UPDATE sources SET enabled = ?2 WHERE id = ?1",
+        params![id, enabled],
+    )?)
+}
+
+pub fn insert_source_from_proposal(
+    conn: &Connection,
+    id: &str,
+    url: &str,
+    title: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT INTO sources (id, url, title, weight, enabled) VALUES (?1, ?2, ?3, 1, 1)",
+        params![id, url, title],
+    )?;
+    Ok(())
+}

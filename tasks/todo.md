@@ -27,13 +27,13 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `Sign`, `Reason` (the eight of `SPEC.md` §6 as an enum with stable snake_case strings), `ProposalStatus`, `ProposalChange` (five kinds, typed payloads, bounds in `TryFrom`), `Evidence { summary, rating_ids, read_count, feed_issue_ids, notes ≤ 500 }`. Repo: `upsert_rating` (replace by item), `delete_rating`, `list_ratings_since`, `insert_proposal`, `list_proposals(status)`, `get_proposal`, `decide_proposal`, plus the writers `set_topic_weight`, `set_topic_origin`, `insert_topic_from_proposal`, `set_source_enabled`, `insert_source_from_proposal`. `apply(conn, proposal_id, now)` runs in one transaction: loads the pending proposal, applies its change, records `applied_json`, sets `approved`; a missing target or a non-pending proposal returns a typed error and changes nothing. ADR 0016.
 
 **Acceptance criteria:**
-- [ ] test: `reasons_round_trip_and_nothing_else_parses`; `proposal_change_bounds_are_refused` (weight 0 and 6, description 201 chars, unknown kind, empty source url).
-- [ ] test: `apply_changes_exactly_its_target_in_one_transaction` (one test per kind: row diffs); `apply_refuses_missing_target_and_non_pending` (no change, typed error); `ratings_upsert_replace_and_delete`.
-- [ ] test: `only_feedback_apply_writes_topics_and_sources` — greps `src/` for callers of the five writers; only `core::feedback::apply` (and `sync_topics` for `upsert_topic`, as today) may call them.
+- [x] test: `reasons_round_trip_and_nothing_else_parses`; `proposal_change_bounds_are_refused` (weight 0 and 6, description 201 chars, unknown kind, empty source url).
+- [x] test: `apply_changes_exactly_its_target_in_one_transaction` (one test per kind: row diffs); `apply_refuses_missing_target_and_non_pending` (no change, typed error); `ratings_upsert_replace_and_delete`.
+- [x] test: `only_feedback_apply_writes_topics_and_sources` — greps `src/` for callers of the five writers; only `core::feedback::apply` (and `sync_topics` for `upsert_topic`, as today) may call them.
 
 **Verification:**
-- [ ] `bin/dc cargo test feedback repo`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test feedback repo`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 1
 **Files likely touched:** `src/core/feedback.rs`, `src/core/mod.rs`, `src/db/repo.rs`, `tests/it/feedback.rs`, `tests/it/main.rs`, `docs/adr/0016-ratings-only-record.md`
