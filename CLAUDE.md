@@ -9,7 +9,7 @@ Personal daily-reading agent in **Rust**. An **Editor agent** (Claude Code headl
 Every milestone runs through the toolkit loop: `/spec` → `/plan` → `/build` → `/test` → `/review` → `/ship`. Skill-to-section mapping and non-negotiables are in `SPEC.md` §0. Do not start implementation without an approved plan for the current milestone. Use the `code-reviewer` and `security-auditor` personas before each `/ship`.
 
 ## Current milestone
-**M2** (`SPEC.md` §8): trajectories on the page and the R0 review backlog. Milestone spec at `spec/m2.md` (capability map approved 2026-09-21); plan goes to `tasks/plan.md` by `/plan`. R0 shipped 2026-09-21 (`docs/ship/r0.md`, `spec/r0.md`); the service runs from `dailybrief-rs:runtime` on the box, and M2 deploys only between mornings.
+**M3** (`SPEC.md` §8): ratings with reasons, the weekly Curator with its five tools, proposals and the `/curator` approval queue, the `PreToolUse` hook, migration `0002_feedback`, plus the M2 review backlog. Milestone spec at `spec/m3.md` (capability map approved 2026-09-22); plan goes to `tasks/plan.md` by `/plan`. M2 shipped 2026-09-22 (`docs/ship/m2.md`); the service runs `dailybrief-rs:m2` on the box, `dailybrief-rs:r0` is the rollback, and deploys happen only between mornings with the image tagged first.
 
 ## Test material (all produced in this repo; nothing imported)
 - `tests/fixtures/feeds/` — small hand-written RSS 2.0 and Atom files.
