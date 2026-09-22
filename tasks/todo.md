@@ -303,5 +303,17 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Estimated scope:** Medium (operations + docs)
 
 ## Checkpoint: Complete
-- [ ] All `spec/m2.md` §9 criteria met with evidence
-- [ ] `/review` (code-reviewer + security-auditor) and `/ship` run
+- [x] All `spec/m2.md` §9 criteria met with evidence (`docs/ship/m2.md`)
+- [x] `/review` (code-reviewer + security-auditor + test-engineer) and `/ship` run 2026-09-22: GO after two fix commits
+
+
+---
+
+## Post-M2 backlog (from the `/ship` review, 2026-09-22; pull into the M3 `/plan`)
+
+- [ ] security L-3: pin the installed Claude Code binary's sha256 (record it in ops/ and assert after install).
+- [ ] security L-5: cap `/runs/{id}/log` at N events with a transcript link; I-5: escaping regression test with planted HTML in tool input, tool result and `runs.error`.
+- [ ] code #5: `selects` counts accepted selects only (pair with `is_error`); #7: the ADR 0014 `extracted` log fires after dedupe (stored items only); #8/#9: fold once per page, avoid loading full `run_events` on the day page while a run is in progress.
+- [ ] code #10: bound the stdout line size; #12: mark `running` rows older than the lock window as `killed` at `serve` start; #18: `scan-transcript --run <id>`; #19: IPv6 transition ranges (NAT64, 6to4) in the private list; #16: a head slot for the meta refresh.
+- [ ] tests: JWKS throttle interval injectable and proven to lift; retry_chain window and kind cases; `extract_falls_back_when_primary_is_too_short`; wall from timestamps; boundary days for prune and the title window; `prune --days 3` refused by the CLI; stale-holder branch of `/run/status`; Barrier-based concurrent `fetch_sources`; heavier rows in the 64 KiB test; drop the extra insert in `manual_run_cap_counts_runs_not_attempts`.
+- [ ] product (M3): editor notes visible with history; readability decision (ADR 0014) from the measurement window starting 2026-09-23.
