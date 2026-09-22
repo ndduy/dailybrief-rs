@@ -231,7 +231,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Estimated scope:** Medium
 
 ## Checkpoint E
-- [ ] `bin/check full` green; coverage not below M2 (95.9 % / 83.2 %)
+- [x] `bin/check full` green; coverage not below M2 (floors pass; numbers in the M3 ship note) (95.9 % / 83.2 %)
 - [ ] Deploy between mornings: `docker tag` the running image, `cp brief.db brief.db.pre-0002` in the volume, rehearse the `m2` image on a copy carrying 0002, migrate live, `up -d`, watch the next 06:30 run
 - [ ] Phone: rate one item; `/curator` opens (empty)
 - [ ] Review with human
@@ -285,7 +285,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Estimated scope:** Medium
 
 ## Checkpoint F
-- [ ] `bin/check full` green; every `spec/m3.md` §9 #7 test name exists and passes
+- [x] `bin/check full` green; every `spec/m3.md` §9 #7 test name exists and passes (2026-09-22, after Task 15)
 - [ ] Review with human
 
 ---

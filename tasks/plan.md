@@ -89,7 +89,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [x] Task 12: `/curator` page, approve/reject, `apply` as the only writer, day pages ignore curator runs, the top-80 gate test
 
 ### Checkpoint E
-- [ ] `bin/check full` green; coverage not below M2
+- [x] `bin/check full` green; coverage not below M2 (floors pass; numbers in the M3 ship note)
 - [ ] Deploy between mornings: tag `m2`-running image, back up `brief.db`, migrate, rollback rehearsal on a copy with the `m2` image, watch the next 06:30 run
 - [ ] Phone: rate one item; `/curator` opens (empty)
 - [ ] Review with human
@@ -100,7 +100,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [x] Task 15: Deferred tests — JWKS interval, retry-chain window and kind, extract fall-through, wall from timestamps, boundaries, `prune --days` CLI, stale holder, barrier `fetch_sources`, heavier 64 KiB rows, cap test insert
 
 ### Checkpoint F
-- [ ] `bin/check full` green; every `spec/m3.md` §9 #7 test name exists and passes
+- [x] `bin/check full` green; every `spec/m3.md` §9 #7 test name exists and passes (2026-09-22, after Task 15)
 - [ ] Review with human
 
 ### Phase 7: Ops and ship (`ops-m3`)
