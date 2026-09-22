@@ -61,7 +61,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 
 ## Checkpoint A
 - [x] `bin/check task` green; every fixture line typed; turn count pinned to `num_turns - 1 ..= num_turns` (ADR 0012 explains the final round trip)
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ---
 
@@ -79,7 +79,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Verification:**
 - [x] `bin/dc cargo test web`
 - [x] `bin/dc bin/check task`
-- [ ] Manual: phone-width screenshot of `/runs/{id}` (Checkpoint B, on the live site after the deploy)
+- [ ] Manual: phone check of the run page on the live site (Duy; same item as Checkpoint B)
 
 **Dependencies:** Task 2
 **Files likely touched:** `src/web/routes/runs.rs`, `src/web/routes/log.rs`, `src/web/routes/mod.rs`, `src/web/views/run.rs`, `src/web/views/state.rs`, `src/web/app.rs`, `tests/it/web.rs`
@@ -103,7 +103,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 
 ## Checkpoint B
 - [ ] Phone check of `/runs/2026-09-22-7494d2ef` on the live site (Duy); the forced failure rendering is proven by test on the real transcript
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ---
 
@@ -183,7 +183,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 
 ## Checkpoint C
 - [x] `bin/check full` green (2026-09-21); retention and harness tests pass; coverage 95.51 % core / 82.26 % rest (R0: 95.4 / 81.0); `trajectory.rs` 96.07 %, `retention.rs` 96.21 %
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ---
 
@@ -248,7 +248,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 ## Checkpoint D
 - [x] `bin/check full` green (284 tests, 95.66 % / 82.75 %); every `spec/m2.md` §9 #4 test exists and passes
 - [x] Deployed 2026-09-22 07:35 local (after the morning run, inside the window); the 2026-09-23 morning is watched in the ship note
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ---
 
@@ -309,7 +309,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 
 ---
 
-## Post-M2 backlog (from the `/ship` review, 2026-09-22; pull into the M3 `/plan`)
+## Post-M2 backlog (from the `/ship` review, 2026-09-22) — moved into `spec/m3.md` §2 `hardening-m3` and the M3 plan
 
 - [ ] security L-3: pin the installed Claude Code binary's sha256 (record it in ops/ and assert after install).
 - [ ] security L-5: cap `/runs/{id}/log` at N events with a transcript link; I-5: escaping regression test with planted HTML in tool input, tool result and `runs.error`.

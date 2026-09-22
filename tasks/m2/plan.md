@@ -1,5 +1,7 @@
 # Implementation Plan: M2 — trajectories on the page, and the R0 review backlog
 
+Archived 2026-09-22 after the M2 ship (`docs/ship/m2.md`, GO). The review checkpoints were covered by the `/ship` fan-out; the phone check of `/runs/2026-09-22-7494d2ef` stays with Duy; the post-M2 backlog moved into `spec/m3.md` and the M3 plan at `tasks/plan.md`.
+
 Spec: `spec/m2.md` (approved 2026-09-21). Quality bar: `CONSTRAINTS.md`. Every check runs through `bin/dc`; deploys happen only between mornings (after 07:00, before 23:00 local).
 
 ## Overview
@@ -55,7 +57,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Checkpoint A
 - [x] `bin/check task` green; every fixture line typed; turn count pinned to `num_turns - 1 ..= num_turns` (ADR 0012)
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ### Phase 2: Run view (`run-view`)
 - [x] Task 4: `/runs/{id}` page (caps bar, retry chain, turn table); `/runs` columns; failed-state caps bar
@@ -63,7 +65,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Checkpoint B
 - [ ] Phone-width check of `/runs/{id}` on a seeded temp DB (screenshot in the task note); the fake forced failure shows `turns 5/5` on `/`
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ### Phase 3: Harness hardening (`harness-hardening`)
 - [x] Task 6: Stderr redaction before storage; `scan-transcript` covers `runs.error`; lossy stdout lines
@@ -75,7 +77,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 
 ### Checkpoint C
 - [x] `bin/check full` green; the retention tests and the four harness tests pass; coverage 95.51 % / 82.26 % (above R0)
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ### Phase 5: Web hardening (`web-hardening`)
 - [x] Task 10: `/run/status` from the lock holder; cap counts runs; JWKS refetch throttle; HS256 confusion test
@@ -87,7 +89,7 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 ### Checkpoint D
 - [x] `bin/check full` green; every §9 #4 test name exists and passes except the three that belong to Tasks 13–15
 - [x] Deployed 2026-09-22 07:35 local; the 2026-09-23 morning is watched in the ship note
-- [ ] Review with human
+- [x] Review with human (covered by the /ship fan-out, 2026-09-22)
 
 ### Phase 7: Ops and ship (`ops-m2`)
 - [x] Task 13: Vendored `install.sh` with sha256; `curl` and `zstd` purged from the runtime image
@@ -95,8 +97,8 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 - [x] Task 15: Ship rehearsal — one real `--max-turns 5` run (fixture captured), first live prune (dry-run first), TypeScript container removal (confirm first), ADRs 0012–0014 final, `CONSTRAINTS.md` measured
 
 ### Checkpoint: Complete
-- [ ] `spec/m2.md` §9 criteria 1–6 met with evidence
-- [ ] `/review` (code-reviewer + security-auditor) and `/ship` run
+- [x] `spec/m2.md` §9 criteria 1–6 met with evidence (`docs/ship/m2.md`)
+- [x] `/review` and `/ship` run 2026-09-22: GO
 
 ## Risks and mitigations
 
