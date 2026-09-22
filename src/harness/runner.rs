@@ -10,6 +10,7 @@ use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 
 use super::claude_code::event_type;
+use super::hook::{SETTINGS_FILE, render_settings};
 use super::types::{HarnessKind, HarnessRequest, RunOutcome};
 use super::verify::verify_outcome;
 use crate::config::Config;
@@ -68,6 +69,9 @@ pub struct Runner {
     /// Editor or Curator: the `runs.role`, the MCP tool set (via `mcp.json`) and the
     /// verification rule. The prompt, schema and user message are chosen by the caller.
     pub role: Role,
+    /// This binary: the `mcp.json` command and the hook command in `settings.json`
+    /// (`current_exe()` in the service; the built `dailybrief` in tests).
+    pub exe: PathBuf,
     pub system_prompt_path: PathBuf,
     pub json_schema: serde_json::Value,
     pub user_message: String,
@@ -168,12 +172,12 @@ impl Runner {
         tokio::fs::create_dir_all(&dir).await?;
         let transcript_path = dir.join("transcript.jsonl");
         let mcp_config_path = dir.join("mcp.json");
+        let settings_path = dir.join(SETTINGS_FILE);
         let template = tokio::fs::read_to_string(&self.config.paths.mcp_template).await?;
-        let command = std::env::current_exe()?;
         let rendered = render(
             &template,
             &McpConfigVars {
-                command: &command,
+                command: &self.exe,
                 args: &self.config.harness.mcp_args,
                 run_id: &run_id,
                 role: self.role.as_str(),
@@ -182,6 +186,7 @@ impl Runner {
             },
         )?;
         tokio::fs::write(&mcp_config_path, rendered).await?;
+        tokio::fs::write(&settings_path, render_settings(&self.exe)).await?;
         tokio::fs::write(&transcript_path, b"").await?;
         {
             let row = NewRun {
@@ -235,6 +240,7 @@ impl Runner {
             run_id: run_id.clone(),
             cwd: dir.clone(),
             mcp_config_path,
+            settings_path,
             system_prompt_path: self.system_prompt_path.clone(),
             user_message: self.user_message.clone(),
             json_schema: self.json_schema.clone(),

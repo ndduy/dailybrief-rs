@@ -32,7 +32,20 @@ fn config_in(data_dir: &Path) -> Config {
 
 /// A fake adapter whose attempt N replays `script_dir/N.jsonl`.
 fn fake(config: &Config, script_dir: &Path, hang: bool, wall_clock: Duration) -> HarnessKind {
+    fake_with(config, script_dir, hang, wall_clock, &[])
+}
+
+fn fake_with(
+    config: &Config,
+    script_dir: &Path,
+    hang: bool,
+    wall_clock: Duration,
+    extra: &[(&str, &str)],
+) -> HarnessKind {
     let mut parent: HashMap<String, String> = HashMap::new();
+    for (k, v) in extra {
+        parent.insert((*k).to_string(), (*v).to_string());
+    }
     parent.insert("PATH".into(), std::env::var("PATH").unwrap_or_default());
     parent.insert("HOME".into(), "/tmp".into());
     parent.insert("CLAUDE_CODE_OAUTH_TOKEN".into(), "fake".into());
@@ -81,6 +94,17 @@ fn rig(attempts: &[&str], hang: bool, verify: bool, wall_clock: Duration) -> Rig
 }
 
 fn rig_as(role: Role, attempts: &[&str], hang: bool, verify: bool, wall_clock: Duration) -> Rig {
+    rig_with(role, attempts, hang, verify, wall_clock, &[])
+}
+
+fn rig_with(
+    role: Role,
+    attempts: &[&str],
+    hang: bool,
+    verify: bool,
+    wall_clock: Duration,
+    extra: &[(&str, &str)],
+) -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("data");
     std::fs::create_dir_all(&data_dir).unwrap();
@@ -89,10 +113,11 @@ fn rig_as(role: Role, attempts: &[&str], hang: bool, verify: bool, wall_clock: D
     script(&script_dir, attempts);
     let config = config_in(&data_dir);
     let db = Db::open(&data_dir.join("brief.db")).unwrap();
-    let harness = fake(&config, &script_dir, hang, wall_clock);
+    let harness = fake_with(&config, &script_dir, hang, wall_clock, extra);
     let runner = Runner {
         db: db.clone(),
         role,
+        exe: PathBuf::from(env!("CARGO_BIN_EXE_dailybrief")),
         system_prompt_path: root().join(match role {
             Role::Editor => "prompts/editor.md",
             Role::Curator => "prompts/curator.md",
@@ -653,4 +678,97 @@ async fn service_runner_runs_the_curator_by_role() {
     let summary = runner.run(RunKind::Manual).await.unwrap();
     assert_eq!(summary.status, "success", "{summary:?}");
     assert_eq!(run_row(&db, &summary.final_run_id).role, Role::Curator);
+}
+
+// ---------- M3 Task 10: the PreToolUse hook end to end ----------
+
+#[tokio::test]
+async fn settings_json_is_rendered_per_run_and_argv_carries_it() {
+    let r = rig_as(
+        Role::Curator,
+        &["curator-empty.jsonl"],
+        false,
+        true,
+        Duration::from_secs(10),
+    );
+    let summary = r.runner.run(RunKind::Manual).await.unwrap();
+    let dir = r
+        .runner
+        .config
+        .paths
+        .data_dir
+        .join("runs")
+        .join(&summary.final_run_id);
+    let settings: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("settings.json")).unwrap()).unwrap();
+    let entry = &settings["hooks"]["PreToolUse"][0];
+    assert_eq!(
+        entry["matcher"],
+        "mcp__dailybrief__propose_change|WebSearch"
+    );
+    let command = entry["hooks"][0]["command"].as_str().unwrap();
+    assert!(command.ends_with(" hook pre-tool-use"), "{command}");
+    assert!(command.contains("dailybrief"), "{command}");
+    // The same binary serves the tools (mcp.json) and the hook.
+    let mcp: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(
+        mcp["mcpServers"]["dailybrief"]["command"],
+        env!("CARGO_BIN_EXE_dailybrief")
+    );
+}
+
+/// The fake runs the hook the way Claude Code does (stdin JSON, exit code) and writes a `hook`
+/// line per decision: the bad proposal and the ninth WebSearch are refused, everything else
+/// (two reads, eight searches) allowed, and the counter file ends at 8.
+#[tokio::test]
+async fn fake_run_with_hooks_records_refusals() {
+    let r = rig_with(
+        Role::Curator,
+        &["curator-hooks.jsonl"],
+        false,
+        true,
+        Duration::from_secs(20),
+        &[("DAILYBRIEF_FAKE_RUN_HOOKS", "1")],
+    );
+    let summary = r.runner.run(RunKind::Manual).await.unwrap();
+    assert_eq!(summary.status, "success", "{summary:?}");
+    let dir = r
+        .runner
+        .config
+        .paths
+        .data_dir
+        .join("runs")
+        .join(&summary.final_run_id);
+    let transcript = std::fs::read_to_string(dir.join("transcript.jsonl")).unwrap();
+    let hooks: Vec<serde_json::Value> = transcript
+        .lines()
+        .filter(|l| l.contains("\"type\":\"hook\""))
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let refused: Vec<&serde_json::Value> =
+        hooks.iter().filter(|h| h["decision"] == "refuse").collect();
+    assert_eq!(refused.len(), 2, "{hooks:?}");
+    assert_eq!(refused[0]["tool_name"], "mcp__dailybrief__propose_change");
+    assert!(
+        refused[0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("kind must be one of")
+    );
+    assert_eq!(refused[1]["tool_name"], "WebSearch");
+    assert!(refused[1]["reason"].as_str().unwrap().contains("cap is 8"));
+    assert_eq!(
+        hooks.iter().filter(|h| h["decision"] == "allow").count(),
+        10
+    );
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("hook-state.json")).unwrap())
+            .unwrap();
+    assert_eq!(state["webSearches"], 8);
+    // The hook lines are stored like every other transcript line.
+    let events =
+        r.db.with(|c| repo::list_run_events(c, &summary.final_run_id))
+            .unwrap();
+    assert_eq!(events.iter().filter(|e| e.kind == "hook").count(), 12);
 }

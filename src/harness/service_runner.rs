@@ -143,10 +143,12 @@ impl ServiceRunner {
                 source,
             })?;
         let tz = crate::core::time::parse_tz(&config.service.timezone)?;
+        let exe = std::env::current_exe().map_err(RunnerError::Io)?;
         let runner = Runner {
             tz,
             db,
             role,
+            exe,
             system_prompt_path: opts.system_prompt_path.unwrap_or(default_prompt),
             json_schema,
             user_message: opts

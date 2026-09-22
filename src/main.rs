@@ -58,6 +58,11 @@ enum Command {
         #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
         max_turns: Option<u32>,
     },
+    /// The PreToolUse hook body (spawned by Claude Code via the per-run settings.json).
+    Hook {
+        /// pre-tool-use
+        event: String,
+    },
     /// Serve the reading pages (and the scheduler) on service.bind:service.port.
     Serve,
     /// Re-embed every item and topic with the current model (first deployment).
@@ -156,6 +161,12 @@ async fn main() -> anyhow::Result<()> {
                 &mut std::io::stdout(),
             )
             .await?;
+            std::process::exit(code);
+        }
+        Command::Hook { event } => {
+            let cwd = std::env::current_dir()?;
+            let code =
+                commands::hook::run(&event, &mut std::io::stdin(), &cwd, &mut std::io::stderr())?;
             std::process::exit(code);
         }
         Command::Reembed => commands::reembed::run(&env, &mut std::io::stdout()).await?,

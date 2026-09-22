@@ -28,4 +28,7 @@ expression: argv
     "--json-schema",
     "{\"properties\":{\"date\":{\"type\":\"string\"}},\"type\":\"object\"}",
     "--no-session-persistence",
+    "--settings",
+    "/data/runs/2026-09-17-abcd1234/settings.json",
+    "--include-hook-events",
 ]

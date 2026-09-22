@@ -3,6 +3,7 @@
 
 pub mod curate;
 pub mod fetch;
+pub mod hook;
 pub mod mcp;
 pub mod migrate;
 pub mod prune;

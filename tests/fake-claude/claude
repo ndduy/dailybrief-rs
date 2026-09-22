@@ -13,8 +13,35 @@
 #   DAILYBRIEF_FAKE_IGNORE_TERM=1 with HANG: ignore SIGTERM (only SIGKILL ends the fake)
 #   DAILYBRIEF_FAKE_PID_FILE      file to write the fake's pid into at start
 #   DAILYBRIEF_FAKE_EXIT          exit code when not hanging (default 0)
+#   DAILYBRIEF_FAKE_RUN_HOOKS=1   for every assistant tool_use line, run the PreToolUse command
+#                                 from ./settings.json the way Claude Code does (stdin JSON,
+#                                 exit 0 allow / 2 refuse) and emit a {"type":"hook"} line after it
 set -u
 if [ -n "${DAILYBRIEF_FAKE_PID_FILE:-}" ]; then echo $$ > "$DAILYBRIEF_FAKE_PID_FILE"; fi
+
+json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\n'; }
+
+# Replays a transcript; with RUN_HOOKS, runs the hook for each tool_use and reports the decision.
+replay() {
+  if [ "${DAILYBRIEF_FAKE_RUN_HOOKS:-}" != "1" ]; then cat "$1"; return; fi
+  cmd=$(grep -o '"command": *"[^"]*"' ./settings.json 2>/dev/null | head -1 | sed 's/"command": *"//; s/"$//')
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$line"
+    case "$line" in
+      *'"type":"assistant"'*'"type":"tool_use"'*)
+        name=$(printf '%s' "$line" | sed -n 's/.*"name":"\([^"]*\)","input":.*/\1/p')
+        input=$(printf '%s' "$line" | sed -n 's/.*"name":"[^"]*","input":\(.*\)}\],"stop_reason".*/\1/p')
+        stdin_json="{\"session_id\":\"fake\",\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"$name\",\"tool_input\":$input,\"cwd\":\"$(json_escape "$PWD")\"}"
+        reason=$(printf '%s' "$stdin_json" | eval "$cmd" 2>&1 >/dev/null); code=$?
+        if [ "$code" -eq 2 ]; then
+          printf '{"type":"hook","subtype":"pre_tool_use","tool_name":"%s","decision":"refuse","reason":"%s"}\n' "$name" "$(json_escape "$reason")"
+        else
+          printf '{"type":"hook","subtype":"pre_tool_use","tool_name":"%s","decision":"allow"}\n' "$name"
+        fi
+        ;;
+    esac
+  done < "$1"
+}
 if [ -n "${DAILYBRIEF_FAKE_STDERR_BYTES:-}" ]; then
   head -c "$DAILYBRIEF_FAKE_STDERR_BYTES" /dev/zero | tr '\0' 'e' >&2
 fi
@@ -30,9 +57,9 @@ if [ -n "${DAILYBRIEF_FAKE_SCRIPT_DIR:-}" ]; then
   echo "$n" > "$counter"
   file="$DAILYBRIEF_FAKE_SCRIPT_DIR/$n.jsonl"
   while [ ! -f "$file" ] && [ "$n" -gt 1 ]; do n=$((n - 1)); file="$DAILYBRIEF_FAKE_SCRIPT_DIR/$n.jsonl"; done
-  [ -f "$file" ] && cat "$file"
+  [ -f "$file" ] && replay "$file"
 elif [ -n "${DAILYBRIEF_FAKE_TRANSCRIPT:-}" ]; then
-  cat "$DAILYBRIEF_FAKE_TRANSCRIPT"
+  replay "$DAILYBRIEF_FAKE_TRANSCRIPT"
 fi
 if [ "${DAILYBRIEF_FAKE_HANG:-}" = "1" ]; then
   if [ "${DAILYBRIEF_FAKE_CLOSE_STDOUT:-}" = "1" ]; then exec 1>&- 2>&-; fi

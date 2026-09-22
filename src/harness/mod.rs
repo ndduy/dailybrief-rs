@@ -2,6 +2,7 @@
 //! subscription, capturing `stream-json`, retrying once, and classifying the outcome.
 
 pub mod claude_code;
+pub mod hook;
 pub mod runner;
 pub mod scan_transcript;
 pub mod scheduler;

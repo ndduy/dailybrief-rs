@@ -22,6 +22,7 @@ fn request(cwd: &Path) -> HarnessRequest {
         run_id: "2026-09-17-fake".into(),
         cwd: cwd.to_path_buf(),
         mcp_config_path: cwd.join("mcp.json"),
+        settings_path: cwd.join("settings.json"),
         system_prompt_path: root().join("prompts/editor.md"),
         user_message: USER_MESSAGE.into(),
         json_schema: serde_json::json!({ "type": "object" }),

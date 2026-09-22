@@ -71,6 +71,11 @@ pub fn build_argv(settings: &ClaudeCodeSettings, req: &HarnessRequest) -> Vec<St
         "--json-schema".into(),
         req.json_schema.to_string(),
         "--no-session-persistence".into(),
+        // The per-run hooks (ADR 0019); `--include-hook-events` puts their outcomes in the
+        // transcript so a refusal is visible on the run page.
+        "--settings".into(),
+        req.settings_path.to_string_lossy().into_owned(),
+        "--include-hook-events".into(),
     ]
 }
 
@@ -493,6 +498,7 @@ mod tests {
             run_id: "2026-09-17-abcd1234".into(),
             cwd: PathBuf::from("/data/runs/2026-09-17-abcd1234"),
             mcp_config_path: PathBuf::from("/data/runs/2026-09-17-abcd1234/mcp.json"),
+            settings_path: PathBuf::from("/data/runs/2026-09-17-abcd1234/settings.json"),
             system_prompt_path: PathBuf::from("/app/prompts/editor.md"),
             user_message: USER_MESSAGE.into(),
             json_schema: serde_json::json!({ "type": "object", "properties": { "date": { "type": "string" } } }),
@@ -588,6 +594,8 @@ mod tests {
             "--verbose",
             "--json-schema",
             "--no-session-persistence",
+            "--settings",
+            "--include-hook-events",
         ] {
             assert!(argv.iter().any(|a| a == flag), "missing {flag}");
         }

@@ -179,12 +179,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `harness::hook::decide(tool, input, state) -> Decision` (allow / refuse with reason): `mcp__dailybrief__propose_change` must parse as a `ProposalChange` with evidence; `WebSearch` counted in `<run dir>/hook-state.json`, refused from the ninth. `dailybrief hook pre-tool-use` reads Claude Code's hook JSON on stdin, exits 0 or 2 with the reason on stderr. The runner renders `<run dir>/settings.json` (`hooks.PreToolUse` matchers for the two tools, command = `<current_exe> hook pre-tool-use`) and appends `--settings <path>` to argv (snapshot updated). The fake gains `DAILYBRIEF_FAKE_RUN_HOOKS=1`: for each tool_use line it runs the hook from `settings.json` and emits a `hook` event line with the decision.
 
 **Acceptance criteria:**
-- [ ] test: `hook_allows_valid_proposals_and_refuses_unknown_kinds`; `hook_refuses_the_ninth_web_search_and_counts_per_run`; `hook_leaves_other_tools_alone`.
-- [ ] test: `settings_json_is_rendered_per_run_and_argv_carries_it` (argv snapshot updated); `fake_run_with_hooks_records_refusals` (curator fixture with a bad proposal and nine searches: two `hook` refusals in the transcript).
+- [x] test: `hook_allows_valid_proposals_and_refuses_unknown_kinds`; `hook_refuses_the_ninth_web_search_and_counts_per_run`; `hook_leaves_other_tools_alone`.
+- [x] test: `settings_json_is_rendered_per_run_and_argv_carries_it` (argv snapshot updated); `fake_run_with_hooks_records_refusals` (curator fixture with a bad proposal and nine searches: two `hook` refusals in the transcript).
 
 **Verification:**
-- [ ] `bin/dc cargo test hook harness`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test hook harness`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 9
 **Files likely touched:** `src/harness/hook.rs`, `src/harness/mod.rs`, `src/commands/hook.rs`, `src/main.rs`, `src/harness/claude_code.rs`, `src/harness/runner.rs`, `tests/fake-claude/claude`, `tests/it/harness.rs`, `docs/adr/0019-hooks-under-restricted.md`

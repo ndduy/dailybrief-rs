@@ -16,6 +16,8 @@ pub struct HarnessRequest {
     /// `.claude/` inside so nothing is auto-discovered.
     pub cwd: PathBuf,
     pub mcp_config_path: PathBuf,
+    /// The per-run `settings.json` (`hooks.PreToolUse`), passed as `--settings`.
+    pub settings_path: PathBuf,
     pub system_prompt_path: PathBuf,
     pub user_message: String,
     /// Draft-07 JSON Schema the final message must satisfy.
