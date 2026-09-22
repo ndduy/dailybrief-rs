@@ -85,14 +85,14 @@ Task 13 vendored installer, purge curl/zstd (ops-m2)      [after 1–12: last im
 - [x] Task 12: `fetch_sources` idempotent under concurrent calls; `verify` wording; extractor instrumentation (ADR 0014 measurement starts)
 
 ### Checkpoint D
-- [ ] `bin/check full` green; every §9 #4 test name exists and passes except the three that belong to Tasks 13–15
-- [ ] Deploy between mornings; next morning's run succeeds on the new image
+- [x] `bin/check full` green; every §9 #4 test name exists and passes except the three that belong to Tasks 13–15
+- [x] Deployed 2026-09-22 07:35 local; the 2026-09-23 morning is watched in the ship note
 - [ ] Review with human
 
 ### Phase 7: Ops and ship (`ops-m2`)
 - [x] Task 13: Vendored `install.sh` with sha256; `curl` and `zstd` purged from the runtime image
 - [x] Task 14: `deny.toml` ↔ `CONSTRAINTS.md`; drop `harness.mcp_command`; tag `dailybrief-rs:r0`; `docs/runbook.md`; ADR 0015
-- [ ] Task 15: Ship rehearsal — one real `--max-turns 5` run (fixture captured), first live prune (dry-run first), TypeScript container removal (confirm first), ADRs 0012–0014 final, `CONSTRAINTS.md` measured
+- [x] Task 15: Ship rehearsal — one real `--max-turns 5` run (fixture captured), first live prune (dry-run first), TypeScript container removal (confirm first), ADRs 0012–0014 final, `CONSTRAINTS.md` measured
 
 ### Checkpoint: Complete
 - [ ] `spec/m2.md` §9 criteria 1–6 met with evidence

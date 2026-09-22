@@ -1,6 +1,6 @@
 # ADR 0012: One typed `Event` over `stream-json`; turns are assistant message ids
 
-Date: 2026-09-21 · Status: draft (Task 1; finalised at Task 2 and the M2 ship) · Milestone: M2
+Date: 2026-09-21 · Status: accepted (finalised at the M2 ship, 2026-09-22) · Milestone: M2
 
 ## Context
 R0 stored every stdout line of `claude -p` in `run_events` and typed only `system/init` and
@@ -39,3 +39,5 @@ whose vocabulary changes with Claude Code releases. `SPEC.md` §8 asks for inter
   article text, `scan-transcript` clean) pins the vocabulary; a Claude Code bump re-runs
   `every_fixture_line_parses_to_a_known_variant` against a fresh capture.
 - `/runs/{id}` (Task 4) supplements `/runs/{id}/log`; the raw page stays for the unknowns.
+- Delivery from the adapter to the writer is a bounded channel (1 024 lines) that the adapter
+  awaits, so a slow writer holds the child on its pipe instead of losing a line (Task 3).

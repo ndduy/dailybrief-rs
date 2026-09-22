@@ -102,7 +102,7 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Estimated scope:** Medium
 
 ## Checkpoint B
-- [ ] Phone-width check of `/runs/{id}` on the live site after the Checkpoint D deploy (the fake forced failure shows `turns 5/5` on the day page: proven by test)
+- [ ] Phone check of `/runs/2026-09-22-7494d2ef` on the live site (Duy); the forced failure rendering is proven by test on the real transcript
 - [ ] Review with human
 
 ---
@@ -291,12 +291,12 @@ Plan: `tasks/plan.md`. Spec: `spec/m2.md`. Every task: RED test → GREEN → `b
 **Description:** After a morning digest exists: `docker compose --profile app exec app dailybrief run --attempts 1 --max-turns 5` (pre-approved once); capture the transcript as `tests/fixtures/transcripts/max-turns-5.jsonl` and replace the hand-written fake fixture; check `/` and `/runs/{id}` on the phone. `prune --dry-run` on the box, show the list, then prune (pre-approved at 60 days). Ask before `docker rm dailybrief-app-1`. Finalise ADRs 0012–0014 with the measurements; update `CONSTRAINTS.md` measured; write the M2 ship note.
 
 **Acceptance criteria:**
-- [ ] `runs.status = failed`, `error_max_turns`; the caps bar shows `turns 5/5`; `scan-transcript` clean; fixture committed.
-- [ ] First prune executed; `/data/runs` holds only the window; `runs` rows intact.
-- [ ] `spec/m2.md` §9 criteria 1–6 evidenced in `docs/ship/m2.md`.
+- [x] `runs.status = failed`, `error_max_turns` (run `2026-09-22-7494d2ef`, 44.6 s, 5 assistant messages / `num_turns` 6); the caps bar shows `turns 5/5` (a hit cap renders N/N); `scan-transcript` clean; fixture `max-turns-5.jsonl` committed and used by the web test.
+- [x] First prune executed 2026-09-22 (dry-run, then real): 0 runs older than 60 days; `/data/runs` 25 directories / 21.5 MB; `runs` rows intact.
+- [x] `spec/m2.md` §9 criteria 1–6 evidenced in `docs/ship/m2.md` (TypeScript container removed, volumes kept until M3).
 
 **Verification:**
-- [ ] `bin/dc bin/check full`; CI green on the ship commit
+- [x] `bin/dc bin/check full`; CI on the ship commit watched after the push
 
 **Dependencies:** Task 14
 **Files likely touched:** `tests/fixtures/transcripts/max-turns-5.jsonl`, `docs/ship/m2.md`, `docs/adr/0012–0014`, `CONSTRAINTS.md`

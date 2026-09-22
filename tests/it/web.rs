@@ -805,15 +805,11 @@ async fn run_page_under_64_kib_for_120_turns() {
 /// link to the run page, and the run page lists the five turns.
 #[tokio::test]
 async fn forced_failure_renders_turns_hit_on_home_and_run_page() {
+    // The real transcript of the M2 gate run (2026-09-22-7494d2ef): five assistant messages,
+    // `num_turns` 6 in the result line, `error_max_turns`.
     let db = Db::open_in_memory().unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let st = state_with_runner_on(
-        db.clone(),
-        tmp.path(),
-        false,
-        "max-turns-5-fake.jsonl",
-        Some(5),
-    );
+    let st = state_with_runner_on(db.clone(), tmp.path(), false, "max-turns-5.jsonl", Some(5));
     let (status, _, _) = send(st.clone(), post_run(true, &[])).await;
     assert_eq!(status, StatusCode::ACCEPTED);
     for _ in 0..100 {
@@ -828,13 +824,10 @@ async fn forced_failure_renders_turns_hit_on_home_and_run_page() {
     );
     let run = db.with(|c| repo::latest_run(c)).unwrap().unwrap();
     assert_eq!(run.status, RunStatus::Failed);
+    let err = run.error.clone().unwrap_or_default();
     assert!(
-        run.error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("maximum number of turns"),
-        "{:?}",
-        run.error
+        err.contains("max_turns") || err.contains("maximum number of turns"),
+        "{err}"
     );
     let today = dailybrief::core::time::date_in_zone(Utc::now(), st.tz);
     let (status, _, body) = send(

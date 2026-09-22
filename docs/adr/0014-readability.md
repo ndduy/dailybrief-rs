@@ -1,6 +1,6 @@
 # ADR 0014: Keep or drop the `readability` fallback — decided by measurement
 
-Date: 2026-09-21 · Status: proposed (Task 12 instruments; the M2 ship decides) · Milestone: M2
+Date: 2026-09-21 · Status: proposed (Task 12 instruments; decided at the M3 /plan) · Milestone: M2
 
 ## Context
 `core::extract` runs `dom_smoothie` first and falls back to the `readability` crate when the
@@ -24,4 +24,7 @@ docker compose --profile app logs --no-log-prefix app | grep '"message":"extract
   and a revisit date.
 
 ## Result
-_(filled at the M2 ship)_
+The instrumentation went live with the M2 deploy on 2026-09-22 07:35 local, so no measurement
+existed at the M2 ship. The window runs from the 2026-09-23 morning fetch; the decision is
+taken at the M3 `/plan` with the counts from the runbook command above (target: at least
+14 mornings).

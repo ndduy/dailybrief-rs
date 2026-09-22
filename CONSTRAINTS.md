@@ -45,12 +45,12 @@ Read this before writing code. Do not weaken it to make a change pass. Canonical
 
 | Metric | Today | Direction |
 |---|---|---|
-| Line coverage per group | core group (`core`, `mcp`, `db`, `harness`, `editor`) 95.41 %; rest group (`web`, `config`, `commands`) 78.79 % (2026-09-18, in the test container, Task 26) | must not fall |
+| Line coverage per group | core group (`core`, `mcp`, `db`, `harness`, `editor`) 95.61 %; rest group (`web`, `config`, `commands`) 82.58 % (2026-09-21, M2 Checkpoint D; R0 was 95.41 / 78.79) | must not fall |
 | `bin/check fast` wall time | 0.8 s warm on the box (2026-09-17, host cargo, Task 25) | must stay ≤ 60 s |
-| `bin/check task` wall time | 21 s warm through `bin/dc` on the box (2026-09-18, Task 28) | must stay ≤ 4 min |
-| `bin/check full` wall time | 151 s warm through `bin/dc` on the box (2026-09-18, Task 26); 1496 s cold in CI (run 35303550178) | must stay ≤ 4 min on the box |
+| `bin/check task` wall time | 10–35 s warm through `bin/dc` on the box (2026-09-21, M2 tasks) | must stay ≤ 4 min |
+| `bin/check full` wall time | 43 s warm through `bin/dc` on the box (2026-09-21, M2 Checkpoint D); 1496 s cold in CI (run 35303550178) | must stay ≤ 4 min on the box |
 | Cold `cargo build --release` in the builder stage | 26 s with a warm BuildKit cache mount (2026-09-18); the cold builds were not timed cleanly (they failed on the network and on the glibc link, ADR 0011) | informs the workspace-split decision (`SPEC.md` §7: split only past ~20 s incremental) |
-| Editor run turns / reads / wall time (from `runs`) | 84 turns / 33 reads / 10 min 17 s, run `2026-09-18-9f4cc78e` (first real run, 2026-09-18); smoke run 3 turns / 4 s | recorded per run; M7 turns it into an eval |
+| Editor run turns / reads / wall time (from `runs`) | 84 / 33 / 10:17 (`2026-09-18-9f4cc78e`); 78 / 32 / 8:20 (`2026-09-21-c8354589`, the fixture); 93 turns / 10:37 (`2026-09-22-de8ebfdb`, first R0-gate morning); the run page shows these per run from M2 | recorded per run; M7 turns it into an eval |
 
 ## Exceptions
 
