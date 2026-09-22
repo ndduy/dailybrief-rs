@@ -78,8 +78,11 @@ enum Command {
     },
     /// Egress scan of a run transcript; exit 1 on any finding.
     ScanTranscript {
-        /// Path to transcript.jsonl
-        path: std::path::PathBuf,
+        /// Path to transcript.jsonl (or use --run)
+        path: Option<std::path::PathBuf>,
+        /// A run id: scans <data_dir>/runs/<id>/transcript.jsonl
+        #[arg(long, conflicts_with = "path")]
+        run: Option<String>,
     },
 }
 
@@ -178,8 +181,14 @@ async fn main() -> anyhow::Result<()> {
             let code = commands::prune::run(&env, days, dry_run, &mut std::io::stdout()).await?;
             std::process::exit(code);
         }
-        Command::ScanTranscript { path } => {
-            let code = commands::scan_transcript::run(&env, &path, &mut std::io::stdout()).await?;
+        Command::ScanTranscript { path, run } => {
+            let code = commands::scan_transcript::run(
+                &env,
+                path.as_deref(),
+                run.as_deref(),
+                &mut std::io::stdout(),
+            )
+            .await?;
             std::process::exit(code);
         }
     }

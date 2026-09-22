@@ -149,13 +149,23 @@ fn run_meta(run: &RunRow) -> Markup {
     }
 }
 
-/// `/runs/{id}/log`. A running run's page reloads itself every 15 s.
-pub fn render_log(run: &RunRow, events: &[RunEvent]) -> Markup {
+/// Events rendered on one log page; the transcript download has the rest.
+pub const EVENT_CAP: usize = 2000;
+
+/// `/runs/{id}/log`. A running run's page reloads itself every 15 s. `total` is the run's
+/// event count; only the first [`EVENT_CAP`] are rendered and the page says so.
+pub fn render_log(run: &RunRow, events: &[RunEvent], total: usize) -> Markup {
     let title = format!("Run {} · log", run.id);
+    let shown = events.len().min(EVENT_CAP);
+    let events = &events[..shown];
     let body = html! {
         header { h1 { "Run " span.meta { (run.id) } } (runs_link()) }
         main {
             (run_meta(run))
+            @if total > shown {
+                p.meta { "Showing the first " (shown) " of " (total) " events; the "
+                    a href={ "/runs/" (run.id) "/transcript" } { "transcript" } " has all of them." }
+            }
             @if events.is_empty() { p.state { "No events yet." } }
             ul.log {
                 @for e in events {

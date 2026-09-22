@@ -83,12 +83,32 @@ fn private_v4(ip: Ipv4Addr) -> bool {
         || ip.is_documentation()
         || o[0] == 0
         || (o[0] == 100 && (64..=127).contains(&o[1])) // CGNAT 100.64/10
+        || (o[0] == 192 && o[1] == 0 && o[2] == 0) // IETF protocol assignments 192.0.0.0/24
+        || (o[0] == 198 && (18..=19).contains(&o[1])) // benchmarking 198.18.0.0/15
         || o[0] >= 240 // reserved
 }
 
 fn private_v6(ip: Ipv6Addr) -> bool {
     if let Some(v4) = ip.to_ipv4_mapped() {
         return private_v4(v4);
+    }
+    let s = ip.segments();
+    // NAT64 (64:ff9b::/96) and 6to4 (2002::/16) carry an IPv4 address: judge that address.
+    if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+        return private_v4(Ipv4Addr::new(
+            (s[6] >> 8) as u8,
+            s[6] as u8,
+            (s[7] >> 8) as u8,
+            s[7] as u8,
+        ));
+    }
+    if s[0] == 0x2002 {
+        return private_v4(Ipv4Addr::new(
+            (s[1] >> 8) as u8,
+            s[1] as u8,
+            (s[2] >> 8) as u8,
+            s[2] as u8,
+        ));
     }
     ip.is_loopback()
         || ip.is_unspecified()
@@ -254,6 +274,41 @@ mod tests {
             max_redirects,
             dedupe_cosine: 0.92,
             allow_loopback: true,
+        }
+    }
+
+    #[test]
+    fn ipv6_transition_ranges_are_private() {
+        let refused = [
+            "64:ff9b::a00:1",      // NAT64 of 10.0.0.1
+            "64:ff9b::7f00:1",     // NAT64 of 127.0.0.1
+            "64:ff9b::c0a8:101",   // NAT64 of 192.168.1.1
+            "2002:a00:1::",        // 6to4 of 10.0.0.1
+            "2002:c0a8:101::1",    // 6to4 of 192.168.1.1
+            "2002:7f00:1::",       // 6to4 of 127.0.0.1
+            "::ffff:192.0.0.10",   // v4-mapped 192.0.0.0/24
+            "::ffff:198.18.0.5",   // v4-mapped 198.18.0.0/15
+            "::ffff:198.19.255.1", // v4-mapped 198.18.0.0/15
+        ];
+        for a in refused {
+            let ip: IpAddr = a.parse().unwrap();
+            assert!(!address_allowed(ip, false), "{a} should be private");
+        }
+        for a in ["192.0.0.10", "198.18.0.5", "198.19.1.1"] {
+            let ip: IpAddr = a.parse().unwrap();
+            assert!(!address_allowed(ip, false), "{a} should be private");
+        }
+        let allowed = [
+            "64:ff9b::808:808",  // NAT64 of 8.8.8.8
+            "2002:808:808::",    // 6to4 of 8.8.8.8
+            "2001:db8:ffff::1",  // documentation is refused elsewhere? no: plain global
+            "::ffff:198.20.0.1", // just past the benchmarking block
+            "198.20.0.1",
+            "192.0.1.1",
+        ];
+        for a in allowed {
+            let ip: IpAddr = a.parse().unwrap();
+            assert!(address_allowed(ip, false), "{a} should be public");
         }
     }
 

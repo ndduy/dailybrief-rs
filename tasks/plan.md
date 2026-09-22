@@ -95,7 +95,7 @@ Task 16 ADRs, live migration, first curate + approval, ship (ops-m3)   [after al
 - [ ] Review with human
 
 ### Phase 6: Hardening (`hardening-m3`)
-- [ ] Task 13: Security backlog — binary sha256 pin, log page event cap, escaping regression test, IPv6 transition ranges, `scan-transcript --run`
+- [x] Task 13: Security backlog — binary sha256 pin, log page event cap, escaping regression test, IPv6 transition ranges, `scan-transcript --run`
 - [ ] Task 14: Harness/core backlog — accepted-select counting, `extracted` log after dedupe, fold once per page, bounded stdout line, orphaned `running` rows marked at start, head slot for the meta refresh
 - [ ] Task 15: Deferred tests — JWKS interval, retry-chain window and kind, extract fall-through, wall from timestamps, boundaries, `prune --days` CLI, stale holder, barrier `fetch_sources`, heavier 64 KiB rows, cap test insert
 

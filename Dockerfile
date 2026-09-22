@@ -54,8 +54,10 @@ ARG CLAUDE_CODE_VERSION
 # at run time. Never an ANTHROPIC_API_KEY. curl and zstd exist only for this step and are purged
 # after it. The version check runs against a throwaway config dir and the real config dir (the
 # dailybrief-claude volume adopts it) ships empty: Claude Code refuses to start when it finds
-# backups but no config file, which is what a build-time run leaves behind otherwise.
-COPY ops/claude-install.sh ops/claude-install.sh.sha256 /tmp/ops/
+# backups but no config file, which is what a build-time run leaves behind otherwise. The
+# installed binary itself is asserted against ops/claude-<version>.sha256 (recorded from the
+# first deployment), so a changed upstream artifact at the same version fails the build.
+COPY ops/claude-install.sh ops/claude-install.sh.sha256 ops/claude-${CLAUDE_CODE_VERSION}.sha256 /tmp/ops/
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl zstd libgomp1 libstdc++6 \
  && useradd -m -u 1000 -s /bin/bash app \
@@ -65,6 +67,7 @@ RUN apt-get update \
  && su app -s /bin/bash -c "export HOME=/home/app PATH=/home/app/.local/bin:\$PATH CLAUDE_CONFIG_DIR=/tmp/claude-verify \
       && bash /tmp/ops/claude-install.sh ${CLAUDE_CODE_VERSION} \
       && claude --version \
+      && (cd /home/app/.local/share/claude/versions && sha256sum -c /tmp/ops/claude-${CLAUDE_CODE_VERSION}.sha256) \
       && rm -rf /tmp/claude-verify /home/app/.claude.json \
       && find /home/app/.claude -mindepth 1 -delete" \
  && apt-get purge -y curl zstd \

@@ -215,3 +215,31 @@ fn compose_app_image_is_overridable_for_rollback() {
         "{app}"
     );
 }
+
+/// The installed Claude Code binary is asserted against a recorded sha256 at build time
+/// (M3 security backlog L-3): the file names the pinned version and the Dockerfile checks it.
+#[test]
+fn claude_binary_sha256_is_pinned() {
+    let dockerfile = read("Dockerfile");
+    let version = dockerfile
+        .lines()
+        .find_map(|l| l.strip_prefix("ARG CLAUDE_CODE_VERSION="))
+        .expect("CLAUDE_CODE_VERSION is an ARG");
+    let recorded = read(&format!("ops/claude-{version}.sha256"));
+    let mut parts = recorded.split_whitespace();
+    let hash = parts.next().expect("a hash");
+    assert_eq!(hash.len(), 64);
+    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "{hash}");
+    assert_eq!(
+        parts.next(),
+        Some(version),
+        "the file names the pinned version"
+    );
+    assert!(dockerfile.contains("ops/claude-${CLAUDE_CODE_VERSION}.sha256 /tmp/ops/"));
+    assert!(dockerfile.contains("sha256sum -c /tmp/ops/claude-${CLAUDE_CODE_VERSION}.sha256"));
+    let check = dockerfile
+        .find("sha256sum -c /tmp/ops/claude-${CLAUDE_CODE_VERSION}")
+        .unwrap();
+    let purge = dockerfile.find("apt-get purge -y curl zstd").unwrap();
+    assert!(check < purge, "the assertion runs in the install step");
+}

@@ -8,7 +8,7 @@ use axum::response::{Html, IntoResponse, Response};
 use super::internal;
 use crate::db::repo;
 use crate::web::app::AppState;
-use crate::web::views::log::render_log;
+use crate::web::views::log::{EVENT_CAP, render_log};
 
 pub async fn show(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     let lookup = id.clone();
@@ -18,12 +18,16 @@ pub async fn show(State(state): State<AppState>, Path(id): Path<String>) -> Resp
             let Some(run) = repo::get_run(conn, &lookup)? else {
                 return Ok(None);
             };
-            let events = repo::list_run_events(conn, &lookup)?;
-            Ok(Some((run, events)))
+            let mut events = repo::list_run_events(conn, &lookup)?;
+            let total = events.len();
+            events.truncate(EVENT_CAP);
+            Ok(Some((run, events, total)))
         })
         .await;
     match result {
-        Ok(Some((run, events))) => Html(render_log(&run, &events).into_string()).into_response(),
+        Ok(Some((run, events, total))) => {
+            Html(render_log(&run, &events, total).into_string()).into_response()
+        }
         Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),
         Err(e) => internal(e),
     }

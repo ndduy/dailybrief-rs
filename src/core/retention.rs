@@ -58,7 +58,7 @@ pub struct PruneReport {
 
 /// Run ids are minted by the runner (`YYYY-MM-DD-<8 hex>`); anything that could leave the
 /// runs directory is refused here as a second line of defence.
-fn id_is_a_plain_name(id: &str) -> bool {
+pub fn id_is_a_plain_name(id: &str) -> bool {
     !id.is_empty() && !id.contains('/') && !id.contains('\\') && !id.starts_with('.')
 }
 

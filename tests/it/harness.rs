@@ -445,7 +445,7 @@ async fn scan_transcript_checks_runs_error() {
     let data_s = data.to_string_lossy().into_owned();
     let env = Env::from_lookup(|n| (n == "DAILYBRIEF_DATA_DIR").then(|| data_s.clone())).unwrap();
     let mut out = Vec::new();
-    let code = dailybrief::commands::scan_transcript::run(&env, &transcript, &mut out)
+    let code = dailybrief::commands::scan_transcript::run(&env, Some(&transcript), None, &mut out)
         .await
         .unwrap();
     let text = String::from_utf8(out).unwrap();

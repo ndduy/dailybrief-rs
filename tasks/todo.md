@@ -245,11 +245,11 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** Record the installed Claude Code 2.1.274 binary's sha256 in `ops/claude-2.1.274.sha256` and assert it after the install step; cap `/runs/{id}/log` at 2 000 events with a transcript link; an escaping regression test planting `<script>` in a tool input, a tool result and `runs.error`; NAT64 `64:ff9b::/96`, 6to4 `2002::/16`, `192.0.0.0/24`, `198.18.0.0/15` in the private list; `scan-transcript --run <id>`.
 
 **Acceptance criteria:**
-- [ ] test: `claude_binary_sha256_is_pinned` (compose test: the Dockerfile asserts the recorded hash); `log_page_caps_events`; `pages_escape_planted_html`; `ipv6_transition_ranges_are_private`; `scan_transcript_accepts_run_id`.
+- [x] test: `claude_binary_sha256_is_pinned` (compose test: the Dockerfile asserts the recorded hash); `log_page_caps_events`; `pages_escape_planted_html`; `ipv6_transition_ranges_are_private`; `scan_transcript_accepts_run_id`.
 
 **Verification:**
-- [ ] `docker compose --profile app build` (the hash assertion runs)
-- [ ] `bin/dc bin/check task`
+- [x] `docker compose --profile app build` (the hash assertion runs)
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** None
 **Files likely touched:** `Dockerfile`, `ops/claude-2.1.274.sha256`, `src/web/views/log.rs`, `src/core/http.rs`, `src/commands/scan_transcript.rs`, `src/main.rs`, `tests/it/compose.rs`, `tests/it/web.rs`

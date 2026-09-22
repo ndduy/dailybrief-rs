@@ -1544,3 +1544,81 @@ async fn approval_moves_the_exploit_top_80() {
         "only {entered} ids entered the top 80 after doubling t2"
     );
 }
+
+// ---------- M3 Task 13: security backlog ----------
+
+#[tokio::test]
+async fn log_page_caps_events() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-huge", RunStatus::Success, None);
+    db.with(|c| {
+        for seq in 1..=2100i64 {
+            repo::append_run_event(
+                c,
+                "2026-09-17-huge",
+                seq,
+                "rate_limit_event",
+                r#"{"type":"rate_limit_event"}"#,
+            )?;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let (status, _, body) = get(db, "/runs/2026-09-17-huge/log").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body.matches("<li>").count(), 2000);
+    assert!(
+        body.contains("Showing the first 2000 of 2100 events"),
+        "{body}"
+    );
+    assert!(body.contains("href=\"/runs/2026-09-17-huge/transcript\""));
+    assert!(body.len() < 3 * 1024 * 1024);
+}
+
+/// Planted HTML in a tool input, a tool result and `runs.error` comes out escaped on every
+/// page that shows it (the run page, the log, the runs index, the day's failed state).
+#[tokio::test]
+async fn pages_escape_planted_html() {
+    let db = Db::open_in_memory().unwrap();
+    let planted = "<script>alert(1)</script><img src=x onerror=alert(2)>";
+    run_row(
+        &db,
+        "2026-09-17-xss",
+        RunStatus::Failed,
+        Some(&format!("boom {planted}")),
+    );
+    db.with(|c| {
+        let input = serde_json::json!({ "id": planted, "query": "<b>bold</b>" });
+        let a = format!(
+            r#"{{"type":"assistant","message":{{"id":"m1","content":[{{"type":"tool_use","id":"t1","name":"mcp__dailybrief__read_item","input":{input}}}]}}}}"#
+        );
+        repo::append_run_event(c, "2026-09-17-xss", 1, "assistant", &a)?;
+        let result = serde_json::json!({ "type": "user", "message": { "content": [{ "type": "tool_result", "tool_use_id": "t1", "content": format!("text {planted}") }] } });
+        repo::append_run_event(c, "2026-09-17-xss", 2, "user", &result.to_string())?;
+        Ok(())
+    })
+    .unwrap();
+    for path in [
+        "/runs/2026-09-17-xss",
+        "/runs/2026-09-17-xss/log",
+        "/runs",
+        "/d/2026-09-17",
+    ] {
+        let (status, _, body) = get(db.clone(), path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            !body.contains("<script>alert(1)"),
+            "{path} carries raw script: {body}"
+        );
+        assert!(!body.contains("<img src=x"), "{path} carries a raw img tag");
+        assert!(
+            body.contains("&lt;script&gt;"),
+            "{path} should show the escaped text: {body}"
+        );
+        assert_eq!(
+            body.matches("<script").count(),
+            1,
+            "{path}: only the htmx script tag"
+        );
+    }
+}
