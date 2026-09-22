@@ -195,19 +195,19 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `run_jobs(jobs: Vec<ScheduledJob>, clock, sleep, stop)` where `ScheduledJob { scheduler, name, job: Box<dyn FnMut() -> BoxFuture<Result<(), String>> + Send> }`; same catch-up rule; `run_two_loops` removed and its tests ported. `[curator] cron = "30 7 * * 0"` (validated); `serve` wires run, prune and curate (in that due order on a tie).
 
 **Acceptance criteria:**
-- [ ] test: the M2 scheduler tests pass on `run_jobs` unchanged in meaning; `curator_fires_on_sundays_only` (injected clock over eight days: one curator firing, seven runs, seven prunes); `ties_run_in_list_order`.
-- [ ] test: config `curator_cron_is_validated`.
+- [x] test: the M2 scheduler tests pass on `run_jobs` unchanged in meaning; `curator_fires_on_sundays_only` (injected clock over eight days: one curator firing, seven runs, seven prunes); `ties_run_in_list_order`.
+- [x] test: config `curator_cron_is_validated`.
 
 **Verification:**
-- [ ] `bin/dc cargo test scheduler config`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test scheduler config`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** Task 9
 **Files likely touched:** `src/harness/scheduler.rs`, `src/commands/serve.rs`, `src/config/schema.rs`, `config/config.toml`
 **Estimated scope:** Medium
 
 ## Checkpoint D
-- [ ] `bin/check task` green; `dailybrief curate` against the fake writes proposals; the hook refuses in the fake run; Sundays only
+- [x] `bin/check task` green; `dailybrief curate` against the fake writes proposals; the hook refuses in the fake run; Sundays only
 - [ ] Review with human
 
 ---

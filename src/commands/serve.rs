@@ -11,7 +11,7 @@ use crate::core::time::parse_tz;
 use crate::db::Db;
 use crate::db::repo::RunKind;
 use crate::harness::claude_code::EnvError;
-use crate::harness::scheduler::{Scheduler, run_two_loops};
+use crate::harness::scheduler::{ScheduledJob, Scheduler, run_jobs};
 use crate::harness::service_runner::{ServiceRunner, ServiceRunnerError, ServiceRunnerOptions};
 use crate::web::app::{AppState, assert_bind_allowed, router};
 use crate::web::auth::{AccessSettings, AccessVerifier};
@@ -54,6 +54,24 @@ pub async fn run(env: &Env, process_env: &HashMap<String, String>) -> Result<(),
         Err(ServiceRunnerError::Env(e)) => return Err(CommandError::Env(e)),
         Err(e) => return Err(CommandError::Usage(e.to_string())),
     };
+    // The Curator's runner shares the database and the lock; only the role differs.
+    let curator = match runner.as_ref() {
+        Some(_) => match ServiceRunner::new(
+            config.clone(),
+            db.clone(),
+            Vec::new(),
+            embedder_for(&config),
+            process_env,
+            ServiceRunnerOptions {
+                role: crate::db::repo::Role::Curator,
+                ..Default::default()
+            },
+        ) {
+            Ok(r) => Some(Arc::new(r)),
+            Err(e) => return Err(CommandError::Usage(e.to_string())),
+        },
+        None => None,
+    };
     let addr = format!("{}:{}", config.service.bind, config.service.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -64,58 +82,80 @@ pub async fn run(env: &Env, process_env: &HashMap<String, String>) -> Result<(),
     tracing::info!(%addr, runs_enabled = runner.is_some(), "serving");
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
-    // One loop drives both daily jobs (ADR 0013): the 06:30 run and the 07:00 prune never
-    // overlap because the loop awaits whichever is due. Without a runner only the prune runs.
+    // One loop drives every job (ADR 0013): the 06:30 run, the 07:00 prune and the Sunday
+    // 07:30 Curator never overlap because the loop awaits whichever is due, in that order on
+    // a tie. Without a runner only the prune runs.
+    let run_scheduler = Scheduler::new(&config.schedule.cron, tz)
+        .map_err(|e| CommandError::Usage(e.to_string()))?;
     let prune_scheduler = Scheduler::new(&config.retention.cron, tz)
         .map_err(|e| CommandError::Usage(e.to_string()))?;
-    let prune_job = {
-        let db = db.clone();
-        let data_dir = config.paths.data_dir.clone();
-        let days = config.retention.days;
-        move || {
-            let db = db.clone();
-            let data_dir = data_dir.clone();
-            async move { prune(&db, &data_dir, chrono::Utc::now(), days, false).await }
-        }
-    };
+    let curate_scheduler =
+        Scheduler::new(&config.curator.cron, tz).map_err(|e| CommandError::Usage(e.to_string()))?;
     let scheduler_task = {
         let mut stop_rx = stop_rx.clone();
         let stop = async move {
             let _ = stop_rx.wait_for(|stopped| *stopped).await;
         };
-        match runner.as_ref() {
-            Some(runner) => {
-                let run_scheduler = Scheduler::new(&config.schedule.cron, tz)
-                    .map_err(|e| CommandError::Usage(e.to_string()))?;
+        let db = db.clone();
+        let data_dir = config.paths.data_dir.clone();
+        let days = config.retention.days;
+        let runner = runner.clone();
+        let curator = curator.clone();
+        tokio::spawn(async move {
+            let mut jobs: Vec<ScheduledJob<'_>> = Vec::new();
+            if let Some(runner) = runner.as_ref() {
                 let runner = Arc::clone(runner);
-                tokio::spawn(async move {
-                    let result = run_two_loops(
-                        &run_scheduler,
-                        &prune_scheduler,
-                        chrono::Utc::now,
-                        tokio::time::sleep,
-                        move || {
-                            let runner = Arc::clone(&runner);
-                            async move { runner.run(RunKind::Scheduled).await }
-                        },
-                        prune_job,
-                        stop,
-                    )
-                    .await;
-                    if let Err(e) = result {
-                        tracing::error!(error = %e, "scheduler stopped");
-                    }
-                })
+                jobs.push(ScheduledJob {
+                    name: "run",
+                    scheduler: &run_scheduler,
+                    job: Box::new(move || {
+                        let runner = Arc::clone(&runner);
+                        Box::pin(async move {
+                            runner
+                                .run(RunKind::Scheduled)
+                                .await
+                                .map(|_| ())
+                                .map_err(|e| e.to_string())
+                        })
+                    }),
+                });
             }
-            None => tokio::spawn(async move {
-                let result = prune_scheduler
-                    .run_loop(chrono::Utc::now, tokio::time::sleep, prune_job, stop)
-                    .await;
-                if let Err(e) = result {
-                    tracing::error!(error = %e, "prune scheduler stopped");
-                }
-            }),
-        }
+            jobs.push(ScheduledJob {
+                name: "prune",
+                scheduler: &prune_scheduler,
+                job: Box::new(move || {
+                    let db = db.clone();
+                    let data_dir = data_dir.clone();
+                    Box::pin(async move {
+                        prune(&db, &data_dir, chrono::Utc::now(), days, false)
+                            .await
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    })
+                }),
+            });
+            if let Some(curator) = curator.as_ref() {
+                let curator = Arc::clone(curator);
+                jobs.push(ScheduledJob {
+                    name: "curate",
+                    scheduler: &curate_scheduler,
+                    job: Box::new(move || {
+                        let curator = Arc::clone(&curator);
+                        Box::pin(async move {
+                            curator
+                                .run(RunKind::Scheduled)
+                                .await
+                                .map(|_| ())
+                                .map_err(|e| e.to_string())
+                        })
+                    }),
+                });
+            }
+            let result = run_jobs(&mut jobs, chrono::Utc::now, tokio::time::sleep, stop).await;
+            if let Err(e) = result {
+                tracing::error!(error = %e, "scheduler stopped");
+            }
+        })
     };
 
     let state = AppState::new(db, config, tz, chrono::Utc::now, runner).with_access(access);

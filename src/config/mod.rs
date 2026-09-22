@@ -7,8 +7,9 @@ mod schema;
 
 pub use load::{Env, Loaded, load_all, load_config, load_feeds, load_topics};
 pub use schema::{
-    Caps, ClaudeCodeSettings, Config, ConfigFile, Embeddings, Feed, FeedsFile, HarnessName,
-    HarnessSettings, Ingest, Paths, Schedule, Service, Topic, TopicOrigin, TopicsFile, is_valid_id,
+    Caps, ClaudeCodeSettings, Config, ConfigFile, Curator, Embeddings, Feed, FeedsFile,
+    HarnessName, HarnessSettings, Ingest, Paths, Schedule, Service, Topic, TopicOrigin, TopicsFile,
+    is_valid_id,
 };
 
 use std::path::PathBuf;

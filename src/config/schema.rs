@@ -26,6 +26,23 @@ pub struct ConfigFile {
     pub harness: HarnessFile,
     #[serde(default)]
     pub retention: RetentionFile,
+    #[serde(default)]
+    pub curator: CuratorFile,
+}
+
+/// `[curator]`: the weekly Curator run at `cron` (service timezone; Sunday 07:30 by default).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CuratorFile {
+    #[serde(default = "d_curator_cron")]
+    pub cron: String,
+}
+impl Default for CuratorFile {
+    fn default() -> Self {
+        Self {
+            cron: d_curator_cron(),
+        }
+    }
 }
 
 /// `[retention]`: run directories and `run_events` older than `days` are pruned by the daily
@@ -217,6 +234,10 @@ fn d_cron() -> String {
 fn d_retention_days() -> u32 {
     60
 }
+fn d_curator_cron() -> String {
+    "30 7 * * 0".to_string()
+}
+
 fn d_retention_cron() -> String {
     "0 7 * * *".to_string()
 }
@@ -391,6 +412,11 @@ pub struct Retention {
     pub cron: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Curator {
+    pub cron: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Caps {
     pub reads: u32,
@@ -460,6 +486,7 @@ pub struct Config {
     pub embeddings: Embeddings,
     pub harness: HarnessSettings,
     pub retention: Retention,
+    pub curator: Curator,
     pub paths: Paths,
 }
 
@@ -529,6 +556,12 @@ impl TryFrom<ConfigFile> for Config {
                 format!("retention.cron '{}' is invalid: {e}", f.retention.cron),
             ));
         }
+        if let Err(e) = croner::Cron::from_str(&f.curator.cron) {
+            return Err(invalid(
+                FILE,
+                format!("curator.cron '{}' is invalid: {e}", f.curator.cron),
+            ));
+        }
         if f.retention.days < MIN_RETENTION_DAYS {
             return Err(invalid(
                 FILE,
@@ -590,6 +623,9 @@ impl TryFrom<ConfigFile> for Config {
             retention: Retention {
                 days: f.retention.days,
                 cron: f.retention.cron,
+            },
+            curator: Curator {
+                cron: f.curator.cron,
             },
             caps: Caps {
                 reads: c.reads,
@@ -756,6 +792,21 @@ mod tests {
         assert_eq!(TopicOrigin::Curator.as_str(), "curator");
         assert_eq!(TopicOrigin::ExplorePromoted.as_str(), "explore-promoted");
         assert_eq!(HarnessName::ClaudeCode.as_str(), "claude-code");
+    }
+
+    #[test]
+    fn curator_cron_is_validated() {
+        let bad: ConfigFile =
+            toml::from_str("[service]\ntimezone = \"UTC\"\n[curator]\ncron = \"30 7 * *\"\n")
+                .unwrap();
+        let err = Config::try_from(bad).unwrap_err().to_string();
+        assert!(err.contains("curator.cron"), "{err}");
+        let ok: ConfigFile = toml::from_str("[service]\ntimezone = \"UTC\"\n").unwrap();
+        assert_eq!(Config::try_from(ok).unwrap().curator.cron, "30 7 * * 0");
+        let unknown = toml::from_str::<ConfigFile>(
+            "[service]\ntimezone = \"UTC\"\n[curator]\nwindow_days = 7\n",
+        );
+        assert!(unknown.is_err(), "unknown keys are refused");
     }
 
     #[test]
