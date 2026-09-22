@@ -15,7 +15,7 @@ use super::dedupe::{
     Duplicate, canonical_url, content_hash, find_duplicate_against, item_id, title_hash,
 };
 use super::embed::Embedder;
-use super::extract::extract;
+use super::extract::{Extractor, extract};
 use super::fetch::{Entry, FeedFetch, fetch_feed};
 use super::http::get_text;
 use super::time::{days_ago_iso, to_iso};
@@ -238,7 +238,7 @@ impl Ingester {
         entries: Vec<Entry>,
         now: DateTime<Utc>,
     ) -> Result<usize, IngestError> {
-        let mut pending: Vec<repo::NewItem> = Vec::new();
+        let mut pending: Vec<(repo::NewItem, Extractor)> = Vec::new();
         let since = days_ago_iso(now, DEDUPE_DAYS);
         for entry in entries {
             let canonical = canonical_url(&entry.link);
@@ -267,25 +267,27 @@ impl Ingester {
             else {
                 continue;
             };
-            // ADR 0014's measurement: which parser produced this item.
-            tracing::info!(feed = %feed.id, extractor = article.extractor.as_str(), words = article.word_count, "extracted");
             // The feed's title wins: entries without one were dropped by the parser.
             let title = entry.title.clone();
-            pending.push(repo::NewItem {
-                id: item_id(&canonical),
-                source_id: feed.id.clone(),
-                url: entry.link.clone(),
-                canonical_url: canonical,
-                title,
-                author: entry.author.clone().or(article.byline),
-                published_at: entry.published.map(to_iso),
-                fetched_at: to_iso(now),
-                word_count: article.word_count as i64,
-                content_hash: content_hash(&article.text),
-                title_hash: th,
-                text: article.text,
-                vector: None,
-            });
+            let extractor = article.extractor;
+            pending.push((
+                repo::NewItem {
+                    id: item_id(&canonical),
+                    source_id: feed.id.clone(),
+                    url: entry.link.clone(),
+                    canonical_url: canonical,
+                    title,
+                    author: entry.author.clone().or(article.byline),
+                    published_at: entry.published.map(to_iso),
+                    fetched_at: to_iso(now),
+                    word_count: article.word_count as i64,
+                    content_hash: content_hash(&article.text),
+                    title_hash: th,
+                    text: article.text,
+                    vector: None,
+                },
+                extractor,
+            ));
         }
         if pending.is_empty() {
             return Ok(0);
@@ -293,14 +295,14 @@ impl Ingester {
         // Embed outside the DB lock (ADR 0002), in one batch per feed.
         let texts: Vec<String> = pending
             .iter()
-            .map(|i| embed_text(&i.title, &i.text))
+            .map(|(i, _)| embed_text(&i.title, &i.text))
             .collect();
         let embedder = Arc::clone(&self.embedder);
         let vectors = tokio::task::spawn_blocking(move || embedder.embed(&texts))
             .await
             .map_err(|_| DbError::Panicked)?
             .map_err(|e| IngestError::Db(DbError::Corrupt(format!("embedding failed: {e}"))))?;
-        for (item, v) in pending.iter_mut().zip(vectors) {
+        for ((item, _), v) in pending.iter_mut().zip(vectors) {
             item.vector = Some(v);
         }
         let threshold = self.config.ingest.dedupe_cosine;
@@ -310,8 +312,8 @@ impl Ingester {
                 // The `(id, vector)` projection is loaded once per batch (not once per item)
                 // and grows with each insert, so near-duplicates inside the batch are caught.
                 let mut recent = repo::list_item_vectors_since(conn, &since)?;
-                let mut stored = 0;
-                for item in pending {
+                let mut stored: Vec<(Extractor, i64)> = Vec::new();
+                for (item, extractor) in pending {
                     let dup = find_duplicate_against(
                         conn,
                         &item.canonical_url,
@@ -328,12 +330,17 @@ impl Ingester {
                     if let Some(v) = &item.vector {
                         recent.push((item.id.clone(), v.clone()));
                     }
-                    stored += 1;
+                    stored.push((extractor, item.word_count));
                 }
                 Ok(stored)
             })
             .await?;
-        Ok(stored)
+        // ADR 0014's measurement: which parser produced each *stored* item (a duplicate that
+        // was extracted and then dropped would otherwise inflate the count).
+        for (extractor, words) in &stored {
+            tracing::info!(feed = %feed.id, extractor = extractor.as_str(), words, "extracted");
+        }
+        Ok(stored.len())
     }
 }
 
@@ -760,5 +767,62 @@ mod tests {
             report.new_items, 0,
             "a title from inside the window is a duplicate"
         );
+    }
+
+    /// ADR 0014's `extracted` log names stored items only: two entries whose bodies differ but
+    /// whose titles collide store one item and log one line (M3 code-review backlog #7).
+    #[test]
+    fn extracted_log_fires_after_dedupe() {
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Sink(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let sink = Sink(Arc::new(Mutex::new(Vec::new())));
+        let writer = sink.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_ansi(false)
+            .finish();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let report = tracing::subscriber::with_default(subscriber, || {
+            rt.block_on(async {
+                let server = MockServer::start().await;
+                let u = server.uri();
+                mount(
+                    &server,
+                    "/rss",
+                    ResponseTemplate::new(200).set_body_string(rss(&[
+                        ("Same Title", &format!("{u}/p1")),
+                        ("Same Title", &format!("{u}/p2")),
+                    ])),
+                )
+                .await;
+                for p in ["/p1", "/p2"] {
+                    mount(
+                        &server,
+                        p,
+                        ResponseTemplate::new(200).set_body_string(html_with_title("Same Title")),
+                    )
+                    .await;
+                }
+                let ing = ingester(config(10_000));
+                ing.run(&[feed("a", format!("{u}/rss"))]).await.unwrap()
+            })
+        });
+        let log = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
+        let extracted = log.lines().filter(|l| l.contains("extracted")).count();
+        assert_eq!(report.new_items, 1, "{report:?}");
+        assert_eq!(extracted, 1, "one log line per stored item:\n{log}");
     }
 }

@@ -288,6 +288,8 @@ pub struct Turn {
     pub result_chars: usize,
     /// Tool results the server marked `is_error` (a rejected select, an unknown item).
     pub errors: u32,
+    /// Full names of the tools whose result was `is_error`, in order.
+    pub failed_tools: Vec<String>,
     /// Seconds since the previous turn's timestamp; `None` for the first turn or without timestamps.
     pub since_prev_secs: Option<f64>,
     pub tokens: Tokens,
@@ -301,7 +303,7 @@ pub struct Turn {
 /// are ignored, never a panic.
 pub fn fold_turns(events: &[RunEvent]) -> Vec<Turn> {
     let mut turns: Vec<Turn> = Vec::new();
-    let mut by_tool_use: HashMap<String, usize> = HashMap::new();
+    let mut by_tool_use: HashMap<String, (usize, String)> = HashMap::new();
     let mut open: Option<Option<String>> = None;
     for e in events {
         match parse_line(&e.payload_json) {
@@ -330,7 +332,7 @@ pub fn fold_turns(events: &[RunEvent]) -> Vec<Turn> {
                     match b {
                         Block::ToolUse { id, name, input } => {
                             turns[idx].tools.push(name.clone());
-                            by_tool_use.insert(id.clone(), idx);
+                            by_tool_use.insert(id.clone(), (idx, name.clone()));
                             if turns[idx].args_summary.is_empty() {
                                 turns[idx].args_summary = truncate(&input.to_string(), ARGS_CHARS);
                             }
@@ -350,11 +352,13 @@ pub fn fold_turns(events: &[RunEvent]) -> Vec<Turn> {
                         content,
                         is_error,
                     } = b
-                        && let Some(&idx) = by_tool_use.get(tool_use_id)
+                        && let Some((idx, name)) = by_tool_use.get(tool_use_id)
                     {
+                        let idx = *idx;
                         turns[idx].result_chars += result_len(content);
                         if *is_error {
                             turns[idx].errors += 1;
+                            turns[idx].failed_tools.push(name.clone());
                         }
                     }
                 }
@@ -388,7 +392,8 @@ pub struct Used {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CapsUsed {
     pub reads: Used,
-    /// `select` calls against `for_you + beyond_radar`.
+    /// Accepted `select` calls (a rejected one is not a selection) against
+    /// `for_you + beyond_radar`.
     pub selects: Used,
     /// `WebSearch` calls against `web_search`.
     pub searches: Used,
@@ -411,6 +416,13 @@ pub fn caps_used(
         turns
             .iter()
             .flat_map(|t| t.tools.iter())
+            .filter(|t| short_tool(t) == name)
+            .count() as u64
+    };
+    let failed = |name: &str| {
+        turns
+            .iter()
+            .flat_map(|t| t.failed_tools.iter())
             .filter(|t| short_tool(t) == name)
             .count() as u64
     };
@@ -446,7 +458,7 @@ pub fn caps_used(
     CapsUsed {
         reads: mark(count("read_item"), u64::from(caps.reads)),
         selects: mark(
-            count("select"),
+            count("select").saturating_sub(failed("select")),
             u64::from(caps.for_you) + u64::from(caps.beyond_radar),
         ),
         searches: mark(count("WebSearch"), u64::from(caps.web_search)),

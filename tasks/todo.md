@@ -260,11 +260,11 @@ Plan: `tasks/plan.md`. Spec: `spec/m3.md`. Every task: RED test → GREEN → `b
 **Description:** `selects` counts accepted selects only (a `select` whose result is `is_error` does not count); the `extracted` log fires after dedupe (stored items only); `routes::runs::show` folds once (`caps_of` takes `&[Turn]`); the stdout line buffer is capped at 4 MiB (an oversized line is stored truncated as `unparseable`); at `serve` start, `running` rows older than the lock window are marked `killed` with "orphaned at restart"; `page_with_css` gains a head slot and the meta refresh moves there.
 
 **Acceptance criteria:**
-- [ ] test: `selects_count_accepted_selects_only`; `extracted_log_fires_after_dedupe` (tracing subscriber capture); `run_page_folds_once` (a counting wrapper); `stdout_line_size_is_bounded`; `orphaned_running_rows_are_marked_at_start`; `meta_refresh_is_in_head`.
+- [x] test: `selects_count_accepted_selects_only`; `extracted_log_fires_after_dedupe` (tracing subscriber capture); `run_page_folds_once` (a counting wrapper); `stdout_line_size_is_bounded`; `orphaned_running_rows_are_marked_at_start`; `meta_refresh_is_in_head`.
 
 **Verification:**
-- [ ] `bin/dc cargo test`
-- [ ] `bin/dc bin/check task`
+- [x] `bin/dc cargo test`
+- [x] `bin/dc bin/check task`
 
 **Dependencies:** None
 **Files likely touched:** `src/harness/trajectory.rs`, `src/core/ingest.rs`, `src/web/routes/runs.rs`, `src/harness/claude_code.rs`, `src/commands/serve.rs`, `src/db/repo.rs`, `src/web/views/layout.rs`, `src/web/views/run.rs`

@@ -4,7 +4,7 @@
 
 use maud::{Markup, html};
 
-use super::layout::{page_with_css, runs_link};
+use super::layout::{page_full, page_with_css, refresh_every, runs_link};
 use crate::core::time::parse_iso;
 use crate::db::repo::{RunRow, RunStatus};
 use crate::harness::trajectory::{AttemptOutcome, CapsUsed, Turn, Used};
@@ -107,8 +107,12 @@ pub fn render_run(
     turns: &[Turn],
 ) -> Markup {
     let title = format!("Run {}", run.id);
+    let head = if run.status == RunStatus::Running {
+        refresh_every(15)
+    } else {
+        html! {}
+    };
     let body = html! {
-        @if run.status == RunStatus::Running { meta http-equiv="refresh" content="15"; }
         header { h1 { "Run " span.meta { (run.id) } } (runs_link()) }
         main {
             p.meta {
@@ -133,7 +137,7 @@ pub fn render_run(
             }
         }
     };
-    page_with_css(&title, &format!("{CAPS_CSS}{CSS}"), body)
+    page_full(&title, &format!("{CAPS_CSS}{CSS}"), head, body)
 }
 
 fn wall_of(r: &RunRow) -> Option<String> {

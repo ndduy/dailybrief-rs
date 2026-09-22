@@ -1622,3 +1622,33 @@ async fn pages_escape_planted_html() {
         );
     }
 }
+
+// ---------- M3 Task 14: harness/core backlog ----------
+
+/// A running run's pages reload themselves from `<head>`, not from a stray tag in the body.
+#[tokio::test]
+async fn meta_refresh_is_in_head() {
+    let db = Db::open_in_memory().unwrap();
+    run_row(&db, "2026-09-17-live", RunStatus::Running, None);
+    run_row(&db, "2026-09-17-done", RunStatus::Success, None);
+    for path in ["/runs/2026-09-17-live", "/runs/2026-09-17-live/log"] {
+        let (_, _, body) = get(db.clone(), path).await;
+        let meta = body
+            .find("http-equiv=\"refresh\"")
+            .unwrap_or_else(|| panic!("{path}: no refresh"));
+        let head_end = body.find("</head>").unwrap();
+        let body_start = body.find("<body>").unwrap();
+        assert!(
+            meta < head_end && meta < body_start,
+            "{path}: refresh outside head"
+        );
+        assert_eq!(body.matches("http-equiv").count(), 1);
+    }
+    for path in ["/runs/2026-09-17-done", "/runs/2026-09-17-done/log"] {
+        let (_, _, body) = get(db.clone(), path).await;
+        assert!(
+            !body.contains("http-equiv"),
+            "{path}: a finished run does not reload"
+        );
+    }
+}

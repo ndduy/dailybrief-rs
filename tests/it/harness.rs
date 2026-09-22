@@ -571,3 +571,44 @@ async fn dead_sink_makes_the_run_fail() {
         other => panic!("expected failed, got {other:?}"),
     }
 }
+
+/// A runaway stdout line (here 6 MiB) is stored cut at the cap with a marker, the rest of the
+/// transcript still arrives, and the run still classifies (M3 code-review backlog #10).
+#[tokio::test]
+async fn stdout_line_size_is_bounded() {
+    use dailybrief::harness::claude_code::{MAX_LINE_BYTES, TRUNCATED_MARKER};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("huge.jsonl");
+    let mut text = String::with_capacity(6 * 1024 * 1024 + 512);
+    text.push_str(r#"{"type":"assistant","message":{"content":[{"type":"text","text":""#);
+    text.push_str(&"y".repeat(6 * 1024 * 1024));
+    text.push_str("\"}]}}\n");
+    text.push_str(
+        std::fs::read_to_string(fixture("success.jsonl"))
+            .unwrap()
+            .trim_start(),
+    );
+    std::fs::write(&path, text).unwrap();
+    let (outcome, lines) = run_with(
+        &[("DAILYBRIEF_FAKE_TRANSCRIPT", path.to_str().unwrap())],
+        Duration::from_secs(30),
+    )
+    .await;
+    assert!(matches!(outcome, RunOutcome::Success { .. }), "{outcome:?}");
+    assert_eq!(lines[0].0, 1);
+    assert!(
+        lines[0].1.len() <= MAX_LINE_BYTES + TRUNCATED_MARKER.len(),
+        "{}",
+        lines[0].1.len()
+    );
+    assert!(lines[0].1.ends_with(TRUNCATED_MARKER));
+    assert_eq!(
+        dailybrief::harness::trajectory::event_type(&lines[0].1),
+        "unparseable"
+    );
+    let result = lines
+        .iter()
+        .filter(|(_, l)| l.contains("\"type\":\"result\""))
+        .count();
+    assert_eq!(result, 1, "the lines after the runaway one still arrive");
+}

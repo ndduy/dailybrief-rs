@@ -1495,6 +1495,60 @@ mod tests {
     }
 
     #[test]
+    fn orphaned_running_rows_are_marked_at_start() {
+        let db = Db::open_in_memory().unwrap();
+        let run = |id: &str, at: &str| NewRun {
+            id: id.into(),
+            kind: RunKind::Scheduled,
+            role: Role::Editor,
+            harness: "claude-code".into(),
+            attempt: 1,
+            started_at: at.into(),
+            transcript_path: None,
+        };
+        db.with(|c| {
+            insert_run(c, &run("old-running", "2026-09-16T23:30:00.000Z"))?;
+            insert_run(c, &run("fresh-running", "2026-09-17T05:50:00.000Z"))?;
+            insert_run(c, &run("old-done", "2026-09-16T23:00:00.000Z"))?;
+            finish_run(
+                c,
+                "old-done",
+                &RunFinish {
+                    status: RunStatus::Success,
+                    ended_at: "2026-09-16T23:10:00.000Z".into(),
+                    turns: None,
+                    usage_json: None,
+                    cost_usd: None,
+                    session_id: None,
+                    error: None,
+                },
+            )?;
+            let n = mark_orphaned_runs(
+                c,
+                "2026-09-17T05:25:00.000Z",
+                "2026-09-17T06:00:00.000Z",
+                "orphaned at restart",
+            )?;
+            assert_eq!(n, 1);
+            assert_eq!(
+                get_run(c, "old-running")?.unwrap().status,
+                RunStatus::Killed
+            );
+            assert_eq!(
+                get_run(c, "old-running")?.unwrap().error.as_deref(),
+                Some("orphaned at restart")
+            );
+            assert_eq!(
+                get_run(c, "fresh-running")?.unwrap().status,
+                RunStatus::Running
+            );
+            assert_eq!(get_run(c, "old-done")?.unwrap().status, RunStatus::Success);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
     fn repo_is_the_only_sql_site() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut offenders = Vec::new();
@@ -1930,4 +1984,19 @@ pub fn list_feed_issues_since(conn: &Connection, since: &str) -> Result<Vec<Feed
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// Marks every `running` run that started before `before` as `killed` with `note` (the
+/// service restarted under it; its lock window has long passed). Returns the rows changed.
+pub fn mark_orphaned_runs(
+    conn: &Connection,
+    before: &str,
+    ended_at: &str,
+    note: &str,
+) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "UPDATE runs SET status = 'killed', ended_at = ?2, error = ?3
+         WHERE status = 'running' AND started_at < ?1",
+        params![before, ended_at, note],
+    )?)
 }

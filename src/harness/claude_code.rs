@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncReadExt, BufReader};
 use tokio::process::Command;
 
 use super::types::{FailReason, HarnessRequest, LineSink, RunOutcome};
@@ -308,13 +308,18 @@ impl ClaudeCodeAdapter {
             let mut buf: Vec<u8> = Vec::new();
             loop {
                 buf.clear();
-                match reader.read_until(b'\n', &mut buf).await {
-                    Ok(0) => break,
-                    Ok(_) => {}
+                let truncated = match read_line_capped(&mut reader, &mut buf, MAX_LINE_BYTES).await
+                {
+                    Ok(None) => break,
+                    Ok(Some(truncated)) => truncated,
                     Err(e) => {
                         tracing::warn!(run_id = %req.run_id, error = %e, "stdout read failed; treating as EOF");
                         break;
                     }
+                };
+                if truncated {
+                    tracing::warn!(run_id = %req.run_id, cap = MAX_LINE_BYTES, "stdout line over the cap; stored truncated");
+                    buf.extend_from_slice(TRUNCATED_MARKER.as_bytes());
                 }
                 // Redacted before it is stored or parsed: the transcript, run_events and every
                 // page see the same text, and none of them can carry the token.
@@ -462,6 +467,47 @@ async fn drain(task: &mut tokio::task::JoinHandle<String>, grace: Duration) -> S
         _ => {
             task.abort();
             String::new()
+        }
+    }
+}
+
+/// The most of one stdout line that is kept (M3 code-review backlog #10): a `stream-json`
+/// line is a few hundred KiB at most, so anything past this is a runaway and is cut. The
+/// remainder of the line is read and dropped so the child never blocks on its pipe.
+pub const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
+/// Appended to a cut line; it makes the JSON invalid, so the line is stored as `unparseable`.
+pub const TRUNCATED_MARKER: &str = " …[truncated: line over 4 MiB]";
+
+/// Reads one line into `buf`, keeping at most `cap` bytes of it. `Ok(None)` at EOF with
+/// nothing read, else `Ok(Some(truncated))`.
+async fn read_line_capped<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    cap: usize,
+) -> std::io::Result<Option<bool>> {
+    use tokio::io::AsyncBufReadExt;
+    let mut truncated = false;
+    let mut read_any = false;
+    loop {
+        let chunk = reader.fill_buf().await?;
+        if chunk.is_empty() {
+            return Ok(read_any.then_some(truncated));
+        }
+        read_any = true;
+        let (take, done) = match chunk.iter().position(|&b| b == b'\n') {
+            Some(i) => (i + 1, true),
+            None => (chunk.len(), false),
+        };
+        let room = cap.saturating_sub(buf.len());
+        if take > room {
+            buf.extend_from_slice(&chunk[..room]);
+            truncated = true;
+        } else {
+            buf.extend_from_slice(&chunk[..take]);
+        }
+        reader.consume(take);
+        if done {
+            return Ok(Some(truncated));
         }
     }
 }

@@ -49,7 +49,7 @@ async fn render_day(state: &AppState, date: &str) -> Response {
             views::digest::render(&digest, &cards, &ratings).into_response()
         }
         Ok((None, Some((run, events)))) => {
-            let caps = super::runs::caps_of(&state.config, &events);
+            let (_, caps) = super::runs::page_data(&state.config, &events);
             match run.status {
                 RunStatus::Running => views::state::running(date, &run, &caps).into_response(),
                 RunStatus::Failed | RunStatus::Killed | RunStatus::Success => {

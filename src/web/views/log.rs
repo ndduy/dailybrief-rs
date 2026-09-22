@@ -5,7 +5,7 @@
 use maud::{Markup, html};
 use serde_json::Value;
 
-use super::layout::{page_with_css, runs_link};
+use super::layout::{page_full, refresh_every, runs_link};
 use crate::db::repo::{RunEvent, RunRow, RunStatus};
 
 /// Characters kept in a one-line summary.
@@ -179,20 +179,12 @@ pub fn render_log(run: &RunRow, events: &[RunEvent], total: usize) -> Markup {
             }
         }
     };
-    if run.status == RunStatus::Running {
-        // maud has no slot for extra head tags; the meta refresh is the first thing in the
-        // body, which browsers honour just the same.
-        page_with_css(
-            &title,
-            CSS,
-            html! {
-                meta http-equiv="refresh" content="15";
-                (body)
-            },
-        )
+    let head = if run.status == RunStatus::Running {
+        refresh_every(15)
     } else {
-        page_with_css(&title, CSS, body)
-    }
+        html! {}
+    };
+    page_full(&title, CSS, head, body)
 }
 
 #[cfg(test)]

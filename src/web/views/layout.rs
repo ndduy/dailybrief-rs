@@ -32,6 +32,12 @@ pub fn page(title: &str, body: Markup) -> Markup {
 /// The shell plus page-specific CSS; the digest page stays under its size cap by carrying
 /// only the shared rules.
 pub fn page_with_css(title: &str, extra_css: &str, body: Markup) -> Markup {
+    page_full(title, extra_css, html! {}, body)
+}
+
+/// The shell with page-specific CSS and extra `<head>` markup (a meta refresh on a running
+/// run's pages).
+pub fn page_full(title: &str, extra_css: &str, head: Markup, body: Markup) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -42,10 +48,16 @@ pub fn page_with_css(title: &str, extra_css: &str, body: Markup) -> Markup {
                 title { (title) }
                 style { (maud::PreEscaped(CSS)) (maud::PreEscaped(extra_css)) }
                 script src=(HTMX_SRC) integrity=(HTMX_SRI) crossorigin="anonymous" defer {}
+                (head)
             }
             body { (body) }
         }
     }
+}
+
+/// `<meta http-equiv="refresh">` every `seconds`, for a page that follows a live run.
+pub fn refresh_every(seconds: u32) -> Markup {
+    html! { meta http-equiv="refresh" content=(seconds); }
 }
 
 /// The header actions: the runs index and the Refresh button. Through htmx the `POST /run`

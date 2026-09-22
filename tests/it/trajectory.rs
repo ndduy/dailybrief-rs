@@ -408,3 +408,32 @@ fn retry_chain_orders_attempts_and_ignores_unrelated_runs() {
     assert_eq!(manual.len(), 1);
     assert!(retry_chain("missing", &newest_first, window).is_empty());
 }
+
+/// A `select` whose result the server marked `is_error` (a rejected staging) is not a
+/// selection: the caps bar counts accepted selects only (M3 code-review backlog #5).
+#[test]
+fn selects_count_accepted_selects_only() {
+    let mut lines: Vec<String> = Vec::new();
+    for i in 1..=4 {
+        lines.push(format!(
+            r#"{{"type":"assistant","message":{{"id":"m{i}","content":[{{"type":"tool_use","id":"t{i}","name":"mcp__dailybrief__select","input":{{"id":"x{i}"}}}}]}}}}"#
+        ));
+        let is_error = i % 2 == 0;
+        lines.push(format!(
+            r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"t{i}","is_error":{is_error},"content":"r"}}]}}}}"#
+        ));
+    }
+    let evs = events(&lines);
+    let turns = fold_turns(&evs);
+    assert_eq!(turns.len(), 4);
+    assert_eq!(
+        turns[1].failed_tools,
+        vec!["mcp__dailybrief__select".to_string()]
+    );
+    assert!(turns[0].failed_tools.is_empty());
+    let used = caps_used(&turns, None, &caps(), &settings());
+    assert_eq!(
+        used.selects.used, 2,
+        "two of the four selects were rejected"
+    );
+}

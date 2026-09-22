@@ -9,7 +9,7 @@ use crate::core::embed::embedder_for;
 use crate::core::retention::prune;
 use crate::core::time::parse_tz;
 use crate::db::Db;
-use crate::db::repo::RunKind;
+use crate::db::repo::{self, RunKind};
 use crate::harness::claude_code::EnvError;
 use crate::harness::scheduler::{ScheduledJob, Scheduler, run_jobs};
 use crate::harness::service_runner::{ServiceRunner, ServiceRunnerError, ServiceRunnerOptions};
@@ -34,6 +34,26 @@ pub async fn run(env: &Env, process_env: &HashMap<String, String>) -> Result<(),
         tracing::warn!("Cloudflare Access verification bypassed: CF_ACCESS_AUD unset on loopback");
     }
     let db = Db::open(&db_path(&config))?;
+    // A run left `running` by a crash or a restart would hold the day's state forever (and
+    // the retention job skips running runs): anything older than the lock window is closed.
+    {
+        let stale_minutes = 2 * config.harness.claude_code.wall_clock_minutes + 5;
+        let now = chrono::Utc::now();
+        let before =
+            crate::core::time::to_iso(now - chrono::Duration::minutes(i64::from(stale_minutes)));
+        let ended_at = crate::core::time::to_iso(now);
+        let n = db
+            .call(move |conn| {
+                repo::mark_orphaned_runs(conn, &before, &ended_at, "orphaned at restart")
+            })
+            .await?;
+        if n > 0 {
+            tracing::warn!(
+                runs = n,
+                "running rows older than the lock window marked killed"
+            );
+        }
+    }
     // A forbidden variable is a hard error (it would change billing); a missing token only
     // disables runs, so the pages still serve on a box without credentials.
     let runner = match ServiceRunner::new(
